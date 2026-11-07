@@ -707,7 +707,11 @@ def ochtendbericht(cfg: dict, vandaag: date | None = None, altijd: bool = False)
     if not altijd and not berichten_aan(cfg)["ochtend"]:
         return "Ochtendbericht staat uit."
     vandaag = vandaag or date.today()
-    inhoud = inzicht.ochtendtekst(laad_plan(), laad_status(), laad_feedback(), vandaag)
+    plan = laad_plan()
+    s = next((x for x in plan if x["datum"] == vandaag.isoformat()), None)
+    link = (planner.cwem_link(s, str(cfg["cwem_url"]), starttijd(cfg.get("week") or {}, s["datum"]))
+            if s and cfg.get("cwem_url") and s.get("omgeving") == "buiten" else None)
+    inhoud = inzicht.ochtendtekst(plan, laad_status(), laad_feedback(), vandaag, link)
     if not inhoud:
         if not altijd:
             return "Rustdag: geen ochtendbericht."

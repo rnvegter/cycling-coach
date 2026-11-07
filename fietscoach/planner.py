@@ -231,25 +231,42 @@ def training_voor(s: dict) -> workouts.Training | None:
     return workouts.bouw(s["soort"], s["minuten"], p, fase, seed)
 
 
-def voeding(minuten: float, zwaarte: int) -> str | None:
-    """Algemene richtlijn uit de sportvoeding voor koolhydraten en drinken tijdens
-    het fietsen, oplopend met de duur. Geen persoonlijk advies."""
-    if minuten < 75:
+def voeding(minuten: float, zwaarte: int, binnen: bool = False) -> str | None:
+    """Algemene richtlijn uit de sportvoeding voor koolhydraten en drinken, oplopend
+    met de duur. Geen persoonlijk advies. Voor buitenritten rekent cwem het met het
+    weer uit (zie cwem_link); dit is de versie voor binnen, en voor buiten zonder cwem.
+    Binnen zweet je meer: geen rijwind om af te koelen."""
+    if minuten < (45 if binnen else 75):
         return None
-    if minuten < 90:
+    if minuten < 75:
+        kh = None
+    elif minuten < 90:
         kh = (30, 60) if zwaarte >= 3 else None
     elif minuten <= 150:
         kh = (40, 60)
     else:
         kh = (60, 90)
     uren = minuten / 60
-    drinken = f"{round(0.5 * uren, 1):g}–{round(0.75 * uren, 1):g} liter drinken"
+    per_uur = (0.75, 1.0) if binnen else (0.5, 0.75)
+    komma = lambda x: f"{round(x, 1):g}".replace(".", ",")  # noqa: E731
+    liters = f"{komma(per_uur[0] * uren)}–{komma(per_uur[1] * uren)} liter"
+    drinken = (f"{liters} drinken, met elektrolyten; zet de ventilator aan" if binnen
+               else f"{liters} drinken; meer en met zout als het warm is")
     if not kh:
         return f"Voeding: water is genoeg; {drinken}."
     totaal = f"{round(kh[0] * uren / 10) * 10}–{round(kh[1] * uren / 10) * 10} g"
     tip = " Ben je dat niet gewend, bouw het op." if kh[1] >= 90 else ""
-    return (f"Voeding: {kh[0]}–{kh[1]} g koolhydraten per uur (totaal {totaal}), {drinken}; "
-            f"meer en met zout als het warm is.{tip}")
+    return f"Voeding: {kh[0]}–{kh[1]} g koolhydraten per uur (totaal {totaal}), {drinken}.{tip}"
+
+
+def cwem_link(s: dict, cwem_url: str, start: str) -> str:
+    """Link naar cwem met deze rit erin: kleding, drinken en eten met het weer van je
+    rijtijd. Tempo voor de kleding uit de zwaarte; de zwaarte zelf voor het eten."""
+    from urllib.parse import urlencode
+    z = int(s.get("zwaarte") or 3)
+    q = {"date": s["datum"], "time": start, "hours": round((s.get("duur") or s["minuten"]) / 60, 2),
+         "pace": "easy" if z <= 2 else "steady" if z == 3 else "hard", "effort": z, "name": s.get("naam", "")}
+    return f"{cwem_url.rstrip('/')}/?{urlencode(q)}#ride"
 
 
 def vul_in(s: dict) -> dict:
@@ -262,7 +279,7 @@ def vul_in(s: dict) -> dict:
     s["duur"] = round(t.minuten)
     z = workouts.zwaarte(t)
     s["tss"], s["zwaarte"] = z["tss"], z["score"]
-    s["voeding"] = voeding(t.minuten, z["score"])
+    s["voeding"] = voeding(t.minuten, z["score"], binnen=s.get("omgeving") == "binnen")
     return s
 
 

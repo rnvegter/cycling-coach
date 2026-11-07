@@ -64,7 +64,8 @@ def test_starttijd_opslaan_en_cwem_link(monkeypatch):
     assert cfg["week"]["za"]["start"] == "08:15" and cfg["week"]["di"]["start"] is None
     service.genereer(cfg, date(2026, 11, 9), vandaag=date(2026, 11, 8))
     html = c.get("/").text
-    assert "https://cwem.dockerapp.org/#ride" in html  # zaterdag: buiten
+    # zaterdag: buiten, met de rit in de link (start 08:15, zoals net ingesteld)
+    assert "https://cwem.dockerapp.org/?date=" in html and "time=08%3A15" in html and "effort=" in html
     assert 'name="start_za"' in c.get("/instellingen").text
 
 

@@ -172,7 +172,8 @@ def test_plan_heeft_tss_en_voeding():
     za = next(s for s in plan if s["datum"] == "2026-11-14")
     assert za["tss"] > 100 and "koolhydraten" in za["voeding"]
     di = next(s for s in plan if s["datum"] == "2026-11-10")
-    assert di["voeding"] is None and di["tss"] > 0
+    # dinsdag 60 min op Zwift: geen eten, wel drinken (binnen zweet je meer)
+    assert "water is genoeg" in di["voeding"] and "0,8–1 liter" in di["voeding"] and di["tss"] > 0
 
 
 
@@ -272,3 +273,31 @@ def test_extra_duurrit_wordt_niet_gekaapt_en_buiten_blijft_buiten():
     vr = plan["2026-11-13"]
     assert vr["soort"] == "duur" and vr["omgeving"] == "buiten"
     assert any(n.startswith("Let op het weer") for n in vr["notities"])
+
+
+def test_voeding_binnen_en_cwem_link_voor_buiten(monkeypatch):
+    from urllib.parse import parse_qs, urlparse
+
+    from fietscoach import inzicht
+    assert planner.voeding(40, 3, binnen=True) is None
+    binnen = planner.voeding(60, 4, binnen=True)
+    assert "ventilator" in binnen and "elektrolyten" in binnen
+    assert planner.voeding(60, 4) is None  # buiten pas vanaf 75 min
+    assert "1–1,5 liter" in planner.voeding(120, 2)
+
+    s = {"datum": "2026-11-14", "minuten": 135, "duur": 135, "zwaarte": 3, "naam": "Lange rit 2u15"}
+    url = planner.cwem_link(s, "https://cwem.example/", "09:30")
+    u = urlparse(url)
+    q = {k: v[0] for k, v in parse_qs(u.query).items()}
+    assert u.fragment == "ride" and q == {"date": "2026-11-14", "time": "09:30", "hours": "2.25",
+                                          "pace": "steady", "effort": "3", "name": "Lange rit 2u15"}
+    assert "pace=hard" in planner.cwem_link(s | {"zwaarte": 5}, "https://c", "18:30")
+    assert "pace=easy" in planner.cwem_link(s | {"zwaarte": 1}, "https://c", "18:30")
+
+    # Ochtendbericht: buiten de cwem-link in plaats van de eigen regel.
+    plan = [s | {"soort": "lange_rit", "status": "gepland", "omgeving": "buiten", "voeding": "Voeding: x",
+                 "notities": []}]
+    _, tekst = inzicht.ochtendtekst(plan, {}, {"rpe": {}}, date(2026, 11, 14), url)
+    assert "Kleding, eten en drinken: https://cwem.example/?" in tekst and "Voeding: x" not in tekst
+    _, tekst = inzicht.ochtendtekst(plan, {}, {"rpe": {}}, date(2026, 11, 14))
+    assert "Voeding: x" in tekst

@@ -137,7 +137,8 @@ def weektekst(w: dict, focusnaam: dict) -> tuple[str, str]:
     return titel, "\n".join(regels)
 
 
-def ochtendtekst(plan: list[dict], status: dict, fb: dict, vandaag: date) -> tuple[str, str] | None:
+def ochtendtekst(plan: list[dict], status: dict, fb: dict, vandaag: date,
+                 cwem: str | None = None) -> tuple[str, str] | None:
     """Titel en tekst voor het ochtendbericht; None op een rustdag."""
     v = vandaag.isoformat()
     s = next((x for x in plan if x["datum"] == v), None)
@@ -149,7 +150,9 @@ def ochtendtekst(plan: list[dict], status: dict, fb: dict, vandaag: date) -> tup
     if s.get("omgeving") == "buiten" and s.get("weer"):
         regels.append(f"Weer: {s['weer']}")
     regels += list(s.get("notities") or [])
-    if s.get("voeding"):
+    if cwem and s.get("omgeving") == "buiten":
+        regels.append(f"Kleding, eten en drinken: {cwem}")
+    elif s.get("voeding"):
         regels.append(s["voeding"])
     open_rpe = [x for x in plan if x["status"] == "gedaan" and x["datum"] < v
                 and x["datum"] >= (vandaag - timedelta(days=7)).isoformat() and x["datum"] not in fb.get("rpe", {})]

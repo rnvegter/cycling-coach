@@ -96,15 +96,15 @@
     <noscript><button class="wx-btn">Kies</button></noscript>
   </form>
   {% endif %}
-  {% if t.weer or t.notities or t.voeding %}
+  {% if t.weer or t.notities or (t.voeding and not cwem(t, cfg)) %}
   <ul class="fc-notes">
     {% if t.weer %}<li>{{ t.weer }}</li>{% endif %}
     {% for n in t.notities %}<li class="{% if 'Zwift' in n or 'weer' in n %}is-weer{% endif %}">{{ n }}</li>{% endfor %}
-    {% if t.voeding %}<li>{{ t.voeding }}</li>{% endif %}
+    {% if t.voeding and not cwem(t, cfg) %}<li>{{ t.voeding }}</li>{% endif %}
   </ul>
   {% endif %}
-  {% if t.omgeving == 'buiten' and cfg.cwem_url %}
-  <div class="wx-bar-row"><a class="wx-btn wx-btn--quiet" href="{{ cfg.cwem_url.rstrip('/') }}/#ride" target="_blank" rel="noopener">Kledingadvies in cwem →</a></div>
+  {% if cwem(t, cfg) %}
+  <div class="wx-bar-row"><a class="wx-btn wx-btn--quiet" href="{{ cwem(t, cfg) }}" target="_blank" rel="noopener">Kleding, eten en drinken in cwem →</a></div>
   {% endif %}
   <details class="wx-more">
     <summary>Opbouw</summary>

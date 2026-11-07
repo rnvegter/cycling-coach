@@ -103,6 +103,17 @@ def ruilopties(s: dict) -> list[tuple[str, str]]:
 templates.env.globals["ruilopties"] = ruilopties
 
 
+def cwem(s: dict, cfg: dict) -> str | None:
+    """Link naar cwem voor een buitenrit, of None als cwem niet is ingesteld."""
+    url = str(cfg.get("cwem_url") or "")
+    if not url or s.get("omgeving") != "buiten":
+        return None
+    return planner.cwem_link(s, url, service.starttijd(cfg.get("week") or {}, s["datum"]))
+
+
+templates.env.globals["cwem"] = cwem
+
+
 def _hrv(status: dict, v: date) -> dict:
     from .adapt import objectieve_readiness
     score, uitleg = objectieve_readiness(status.get("wellness") or [], v)
