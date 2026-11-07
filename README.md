@@ -33,7 +33,7 @@ Werkt zoals JOIN, maar draait op je eigen server en ziet eruit als cwem (zelfde 
 - **Weekterugblik**: op maandag en dinsdag op Vandaag, en zondag om 20:00 als bericht: gereden tegenover gepland (uren, TSS), gemiddelde RPE, verandering in fitheid en wat de komende week brengt.
 - **.zwo-download** per training, als reserve voor Zwift.
 
-Elke ochtend om 05:30 en met de knop **Bijsturen**: ritten, wellness en weer vers ophalen, bijsturen en de komende 14 dagen naar intervals.icu (type *Ride* = buiten/Wahoo, *VirtualRide* = Zwift). Na invoer in het scherm (RPE, readiness, duur, afwezigheid) is het schema direct bijgewerkt met de laatst opgehaalde gegevens; de sync naar intervals.icu gaat dan op de achtergrond.
+Elke ochtend om 07:00 (dan zitten HRV en rusthartslag van de nacht er meestal in) en met de knop **Bijsturen**: ritten, wellness en weer vers ophalen, bijsturen en de komende 14 dagen naar intervals.icu (type *Ride* = buiten/Wahoo, *VirtualRide* = Zwift). Na invoer in het scherm (RPE, readiness, duur, afwezigheid) is het schema direct bijgewerkt met de laatst opgehaalde gegevens; de sync naar intervals.icu gaat dan op de achtergrond.
 
 **Je eigen wijzigingen in intervals.icu blijven staan.** Verplaats, wijzig of verwijder je een training van Fietscoach in intervals.icu, dan overschrijft de sync dat niet meer. Op de dag staat wat er veranderd is, met de knop **Terug naar plan**.
 
