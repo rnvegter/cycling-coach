@@ -9,7 +9,7 @@ Werkt zoals JOIN, maar draait op je eigen server en ziet eruit als cwem (zelfde 
 **Vier schermen**
 - **Vandaag**: FTP, eFTP, fitheid, vermoeidheid en vorm; readiness invullen; de training van vandaag met profielgrafiek, weer en aanpassingen; openstaande feedback (RPE); deze week; een andere tijd op een dag.
 - **Schema**: alle weken met focus, uren en per training de opbouw en (na het rijden) de score.
-- **Bibliotheek**: alle 34 trainingsvormen met profiel en uitleg, te bekijken op 45, 60 of 90 minuten. Daaronder protocollen uit gepubliceerd onderzoek, met bron: 30/15's (Rønnestad 2015/2020), 4×8 en 4×16 (Seiler 2013), 4×4 (Helgerud 2007), sprintintervallen 4–6×30 s (Burgomaster/Gibala 2005), Tabata (1996) en de 20-minutentest (Allen & Coggan).
+- **Bibliotheek**: alle 34 trainingsvormen met profiel, uitleg en een **zwaarte van 1 tot 5**, te bekijken op 45, 60 of 90 minuten. De zwaarte volgt uit de intensiteit (IF, genormaliseerd vermogen per seconde met een 30 s-gemiddelde, zodat korte sprints niet overdrijven): < 0,60 = 1, < 0,72 = 2, < 0,82 = 3, < 0,87 = 4, daarboven 5. Lange ritten tellen zwaarder: TSS ≥ 100 minstens 3, ≥ 180 minstens 4. Daaronder protocollen uit gepubliceerd onderzoek, met bron: 30/15's (Rønnestad 2015/2020), 4×8 en 4×16 (Seiler 2013), 4×4 (Helgerud 2007), sprintintervallen 4–6×30 s (Burgomaster/Gibala 2005), Tabata (1996) en de 20-minutentest (Allen & Coggan).
 - **Instellingen**: doel (FTP, duur of een tocht met datum), focusblokken, je gewone week, voorkeuren en weergrenzen. Opslaan bouwt het schema vanaf vandaag opnieuw op; het verleden blijft staan.
 
 **Wat het schema laat meebewegen**

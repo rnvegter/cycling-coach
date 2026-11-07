@@ -339,3 +339,43 @@ def zwo(t: Training) -> str:
             f"  <name>{escape(t.naam)}</name>\n  <description>{escape(t.toelichting)}</description>\n"
             "  <sportType>bike</sportType>\n  <workout>\n    "
             + "\n    ".join(regels) + "\n  </workout>\n</workout_file>\n")
+
+
+# --- zwaarte ------------------------------------------------------------------------
+
+def belasting(t: Training) -> tuple[float, float]:
+    """(IF, TSS) zoals trainingssoftware ze berekent, in % FTP: per seconde het
+    vermogen, een voortschrijdend gemiddelde van 30 s, daarvan het gemiddelde van
+    de vierde macht en de vierdemachtswortel (genormaliseerd vermogen). IF = NP/FTP;
+    TSS = uren × IF² × 100. Stappen zonder ERG tellen op hun richtwaarde."""
+    reeks: list[float] = []
+    for lo, hi, sec in ((lo, hi, round(m * 60)) for m, lo, hi in segmenten(t)):
+        for i in range(sec):
+            reeks.append(lo + (hi - lo) * (i + 0.5) / sec)
+    if not reeks:
+        return 0.0, 0.0
+    venster, som, glad = 30, 0.0, []
+    for i, w in enumerate(reeks):
+        som += w
+        if i >= venster:
+            som -= reeks[i - venster]
+        glad.append(som / min(i + 1, venster))
+    np_ = (sum(x ** 4 for x in glad) / len(glad)) ** 0.25
+    if_ = np_ / 100
+    return round(if_, 2), round(len(reeks) / 3600 * if_ ** 2 * 100)
+
+
+ZWAARTE_IF = (0.60, 0.72, 0.82, 0.87)  # grenzen tussen 1|2|3|4|5, afgestemd op de bibliotheek
+
+
+def zwaarte(t: Training) -> dict:
+    """Zwaarte 1–5. Vooral intensiteit (IF): herstel 1, duur 2, tempo/sweetspot 3,
+    drempel 4, VO2max en tests 5. Lange ritten tellen zwaarder door de belasting:
+    TSS ≥ 100 minstens 3, TSS ≥ 180 minstens 4."""
+    if_, tss = belasting(t)
+    score = 1 + sum(if_ >= g for g in ZWAARTE_IF)
+    if tss >= 180:
+        score = max(score, 4)
+    elif tss >= 100:
+        score = max(score, 3)
+    return {"score": score, "if": if_, "tss": tss}

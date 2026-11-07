@@ -1084,3 +1084,39 @@ def test_indeling_via_scherm(monkeypatch):
     loc = r.headers["location"].replace("%20", " ").replace("%3A", ":").replace("%2C", ",")
     assert "Automatisch ingedeeld: 1 drempel, 1 vo2max" in loc or "Automatisch ingedeeld: 1 vo2max, 1 drempel" in loc
     assert all(not w.handmatig for w in eigen.alle())
+
+
+# --- zwaarte ------------------------------------------------------------------------
+
+def _vast(*stappen):
+    return workouts.Training("x", "x", [workouts.Blok(None, [workouts.Stap(m, p) for m, p in stappen])])
+
+
+def test_belasting_bekende_waarden():
+    assert workouts.belasting(_vast((60, 100))) == (1.0, 100)   # een uur op FTP
+    assert workouts.belasting(_vast((60, 70))) == (0.7, 49)
+    assert workouts.belasting(_vast((30, 100), (30, 100))) == (1.0, 100)
+    # 10 s sprint in een uur zone 2: het 30 s-gemiddelde dempt de piek
+    met_sprint = workouts.Training("x", "x", [workouts.Blok(None, [
+        workouts.Stap(30, 65), workouts.Stap(10 / 60, 200, vrij=True), workouts.Stap(30 - 10 / 60, 65)])])
+    assert workouts.belasting(met_sprint)[0] < 0.70
+
+
+@pytest.mark.parametrize("soort,minuten,score", [
+    ("herstel", 60, 1), ("duur", 60, 2), ("sweetspot", 60, 3), ("drempel", 60, 4),
+    ("vo2max", 60, 5), ("ftp_test", 40, 5), ("lange_rit", 150, 3), ("lange_rit", 240, 4)])
+def test_zwaarte_schaal(soort, minuten, score):
+    z = workouts.zwaarte(workouts.bouw(soort, minuten, 0.5, "opbouw"))
+    assert z["score"] == score, (soort, z)
+
+
+def test_zwaarte_in_bibliotheek(monkeypatch):
+    from fastapi.testclient import TestClient
+    from fietscoach import web
+    monkeypatch.setattr(service, "laad_config", lambda *a: dict(VOORBEELD))
+    eigen.importeer([("vo2.zwo", VO2_ZWO)])
+    html = TestClient(web.app).get("/bibliotheek").text
+    # elke ingebouwde vorm, de eigen workout twee keer (bij zijn soort en in het eigen blok), de legenda
+    assert html.count('class="fc-zwaarte z') == len(bibliotheek.catalogus(60)) + 2 + 1
+    assert 'title="Zwaarte 1/5 · IF 0.52' in html  # herstel
+    assert re.search(r'Zwaarte [1-5]/5 · IF \d\.\d\d · TSS \d+', html)

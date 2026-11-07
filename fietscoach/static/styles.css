@@ -366,6 +366,17 @@ details.fc-wk > .fc-week { padding: 0 var(--sp-4) var(--sp-2); }
 
 .wx-hidden { display: none !important; }
 
+/* ---------- 8. Zwaarte 1–5 ------------------------------------ */
+/* Vijf blokjes; gevuld in de kleur van de schaal, van blauw (licht) tot rood (zwaar). */
+.fc-rechts { display: inline-flex; align-items: center; gap: var(--sp-2); white-space: nowrap; }
+.fc-zwaarte { display: inline-flex; gap: 2px; vertical-align: middle; }
+.fc-zwaarte i { width: 6px; height: 10px; background: var(--surface-2); border: 1px solid var(--line); }
+.fc-zwaarte.z1 i.aan { background: var(--t-frozen); border-color: var(--t-frozen); }
+.fc-zwaarte.z2 i.aan { background: var(--t-cool); border-color: var(--t-cool); }
+.fc-zwaarte.z3 i.aan { background: var(--t-warm); border-color: var(--t-warm); }
+.fc-zwaarte.z4 i.aan { background: var(--t-hot); border-color: var(--t-hot); }
+.fc-zwaarte.z5 i.aan { background: var(--t-baking); border-color: var(--t-baking); }
+
 /* ---------- 7. Schuifjes (cwem .wx-slider) ------------------- */
 /* Zelfde knop als in cwem: een smalle staande streep. De baan is hier geen
    temperatuurschaal maar tijd, dus neutraal: gevuld tot de knop. */

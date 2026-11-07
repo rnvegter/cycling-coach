@@ -68,6 +68,7 @@ def datumlabel(d: str, lang: bool = False) -> str:
 
 templates.env.globals.update(
     profiel_t=lambda t: Markup(workouts.profiel_svg(t)),
+    zwaarte=workouts.zwaarte,
     klasse=lambda s: "t-" + workouts.SOORTKLASSE.get(s["soort"], "mild"),
     soortnaam=lambda s: workouts.SOORTNAAM.get(s["soort"], s["soort"]),
     profiel=profiel, datumlabel=datumlabel, focusnaam=FOCUSNAAM, dagnaam=DAGNAAM,

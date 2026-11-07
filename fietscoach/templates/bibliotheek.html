@@ -6,13 +6,20 @@
 <div class="fc-legend">{% for k, n in zonelegenda %}<span class="t-{{ k }}"><i></i>{{ n }}</span>{% endfor %}</div>
 <div class="wx-strip" style="margin-bottom:var(--sp-5)"></div>
 
+{% macro stippen(z) %}<span class="fc-zwaarte z{{ z.score }}" title="Zwaarte {{ z.score }}/5 · IF {{ '%.2f'|format(z['if']) }} · TSS {{ z.tss }}" aria-label="Zwaarte {{ z.score }} van 5">{% for i in range(1, 6) %}<i class="{% if i <= z.score %}aan{% endif %}"></i>{% endfor %}</span>{% endmacro %}
+<p class="wx-note" style="margin-top:0">Zwaarte <span class="fc-zwaarte z3"><i class="aan"></i><i class="aan"></i><i class="aan"></i><i></i><i></i></span>
+  van 1 (herstel) tot 5 (VO2max, tests), op intensiteit (IF) en belasting (TSS) bij de getoonde duur.</p>
+
 {% for soort, trainingen in groepen %}
 <h2 class="wx-heading" style="margin-top:var(--sp-5)">{{ soortnaam({'soort': soort}) }} <span class="wx-dim wx-num" style="font-size:var(--step--1)">· {{ trainingen|length }}</span></h2>
 {% for t in trainingen %}
 <details class="fc-wk {{ klasse({'soort': soort}) }}">
-  <summary><span class="fc-day__name">{{ t.naam }}</span><span class="wx-eyebrow" style="margin:0">{% if t.extra.eigen %}eigen · {% endif %}{{ t.minuten|round|int }} min</span></summary>
+  {% set z = zwaarte(t) %}
+  <summary><span class="fc-day__name">{{ t.naam }}</span>
+    <span class="fc-rechts">{{ stippen(z) }}<span class="wx-eyebrow" style="margin:0">{% if t.extra.eigen %}eigen · {% endif %}{{ t.minuten|round|int }} min</span></span></summary>
   <div style="padding:0 var(--sp-4) var(--sp-4)">
     {{ profiel_t(t) }}
+    <p class="wx-eyebrow" style="margin:var(--sp-2) 0 0">Zwaarte {{ z.score }}/5 · IF {{ '%.2f'|format(z['if']) }} · TSS {{ z.tss }}</p>
     <p class="wx-note">{{ t.toelichting }}</p>
     <details class="wx-more"><summary>Opbouw</summary><pre class="fc-opbouw">{{ t.beschrijving() }}</pre></details>
   </div>
@@ -45,10 +52,12 @@
   {% endif %}
   {% for w in eigen %}
   <details class="fc-wk {{ klasse({'soort': w.soort}) }}" style="margin-top:var(--sp-3)">
+    {% set z = zwaarte(w.training) %}
     <summary><span class="fc-day__name">{{ w.naam }}</span>
-      <span class="wx-eyebrow" style="margin:0">{{ soortnaam({'soort': w.soort}) }}{% if w.handmatig %} ✎{% endif %} · {{ w.minuten|round|int }} min</span></summary>
+      <span class="fc-rechts">{{ stippen(z) }}<span class="wx-eyebrow" style="margin:0">{{ soortnaam({'soort': w.soort}) }}{% if w.handmatig %} ✎{% endif %} · {{ w.minuten|round|int }} min</span></span></summary>
     <div style="padding:0 var(--sp-4) var(--sp-4)">
       {{ profiel_t(w.training) }}
+      <p class="wx-eyebrow" style="margin:var(--sp-2) 0 0">Zwaarte {{ z.score }}/5 · IF {{ '%.2f'|format(z['if']) }} · TSS {{ z.tss }}</p>
       <p class="wx-note">{{ w.training.toelichting }}</p>
       <details class="wx-more"><summary>Opbouw</summary><pre class="fc-opbouw">{{ w.training.beschrijving() }}</pre></details>
       <form method="post" action="/eigen/soort" class="wx-row" style="margin-top:var(--sp-3)">
