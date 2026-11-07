@@ -26,7 +26,9 @@ from .intervals import PREFIX, Intervals, eftp_uit, naar_event
 CONFIG = Path(os.environ.get("FIETSCOACH_CONFIG", "config.yaml"))
 DATA = Path(os.environ.get("FIETSCOACH_DATA", "data"))
 HORIZON = 14  # dagen vooruit: bijsturen en naar intervals.icu
-INSTELBAAR = ("doel", "week", "voorkeuren", "weer", "uitzonderingen")
+INSTELBAAR = ("doel", "week", "voorkeuren", "weer", "uitzonderingen", "afwezig")
+WEER_GELDIG_UUR = 3     # zo lang gebruiken we een opgehaald weerbericht bij invoer in het scherm
+FROZEN_DAGEN = 21       # ouder dan dit: status uit het vorige plan (ritten halen we 28 dagen terug)
 
 
 # --- vergrendeling ----------------------------------------------------------------
@@ -97,7 +99,23 @@ def bewaar_instellingen(cfg: dict) -> None:
 
 
 def laad_plan() -> list[dict]:
+    """Het afgeleide schema: basis + al je invoer, zoals het scherm en de sync het zien."""
     return _lees("plan.json", [])
+
+
+def laad_basis() -> list[dict]:
+    """Het schema zoals de generator het maakte. Wordt nooit bijgestuurd, alleen vervangen.
+    Oudere installaties hadden alleen plan.json: daar halen we de basis eenmalig uit."""
+    basis = _lees("basis.json", None)
+    if basis is None:
+        oud = _lees("plan.json", [])
+        basis = [{k: v for k, v in x.items() if k not in ("status", "score", "notities", "weer", "weer_slecht",
+                                                         "p_mod", "herkomst", "verschoven")}
+                 | {"soort": x["basis_soort"], "minuten": x["basis_minuten"]}
+                 for x in oud if "basis_soort" in x]
+        if basis:
+            _schrijf("basis.json", basis)
+    return basis
 
 
 def laad_status() -> dict:
@@ -129,135 +147,179 @@ def starttijd(week: dict, datum: str) -> str:
     return (week.get(dag) or {}).get("start") or ("09:30" if dag in ("za", "zo") else "18:30")
 
 
-# --- schema maken ---------------------------------------------------------------
+# --- schema maken ---
 
 @onder_slot
 def genereer(cfg: dict, start: date | None = None, vandaag: date | None = None) -> list[dict]:
-    """Nieuw schema. Wat al voorbij is blijft staan (met je ritten en scores);
-    vanaf vandaag komt het nieuwe schema ervoor in de plaats."""
+    """Nieuw basisschema. Wat al voorbij is blijft staan; vanaf vandaag het nieuwe.
+    Daarna meteen afleiden (zonder netwerk), zodat het scherm klopt."""
     vandaag = vandaag or date.today()
     start = start or date.fromisoformat(str(cfg["doel"]["startdatum"]))
     nieuw = planner.genereer(cfg, start)
     v = vandaag.isoformat()
-    oud = laad_plan()
-    plan = ([s for s in oud if s["datum"] < v] + [s for s in nieuw if s["datum"] >= v]) if oud else nieuw
-    _schrijf("plan.json", plan)
-    return plan
+    oud = laad_basis()
+    basis = ([x for x in oud if x["datum"] < v] + [x for x in nieuw if x["datum"] >= v]) if oud else nieuw
+    _schrijf("basis.json", basis)
+    bijsturen(cfg, vandaag, ververs=False, weer_ophalen=False)
+    return laad_plan()
 
 
 def _extra_dagen(plan: list[dict], uitz: dict, vandaag: date, week: dict, vk: dict) -> None:
     """Een dag die normaal vrij is, maar waarop je nu wél tijd hebt, krijgt een duurrit."""
     v = vandaag.isoformat()
     bestaand = {s["datum"] for s in plan}
-    for s in [s for s in plan if s.get("extra") and s["status"] == "gepland"
-              and int(uitz.get(s["datum"], 0)) < 30]:
-        plan.remove(s)
     for d, m in uitz.items():
         if d < v or d in bestaand or int(m) < 30:
             continue
         dt = date.fromisoformat(d)
         maandag = (dt - timedelta(days=dt.weekday())).isoformat()
-        buur = next((s for s in plan if maandag <= s["datum"] <= (dt + timedelta(days=6 - dt.weekday())).isoformat()), None)
+        zondag = (dt + timedelta(days=6 - dt.weekday())).isoformat()
+        buur = next((s for s in plan if maandag <= s["datum"] <= zondag), None)
         if not buur:
             continue
         dag = planner.DAGEN[dt.weekday()]
-        minuten = int(m) if not buur["herstelweek"] else planner.round5(int(m) * 0.65)
+        minuten = max(30, int(m) if not buur["herstelweek"] else planner.round5(int(m) * 0.65))
         s = {"datum": d, "dag": dag, "week": buur["week"], "fase": buur["fase"], "focus": buur.get("focus"),
              "herstelweek": buur["herstelweek"], "rol": "extra", "p": buur["p"], "extra": True,
-             "variant": buur.get("variant", 0) + 1,
-             "basis_soort": "duur", "basis_minuten": max(30, minuten), "soort": "duur",
-             "minuten": max(30, minuten), "buiten_toegestaan": bool((week.get(dag) or {}).get("buiten", True)),
+             "variant": buur.get("variant", 0) + 1, "basis_soort": "duur", "basis_minuten": minuten,
+             "soort": "duur", "minuten": minuten, "buiten_toegestaan": bool((week.get(dag) or {}).get("buiten", True)),
              "status": "gepland", "notities": []}
         s["omgeving"] = planner.standaard_omgeving(s, vk)
-        plan.append(planner.vul_in(s))
+        plan.append(s)
     plan.sort(key=lambda s: s["datum"])
+
+
+def afleiden(basis: list[dict], cfg: dict, status: dict, fb: dict, verwachting,
+             vandaag: date, oud: list[dict]) -> tuple[list[dict], list[str]]:
+    """Het hele schema opnieuw uit basis + invoer. Puur: zelfde invoer, zelfde uitkomst."""
+    vk = cfg.get("voorkeuren", {}) or {}
+    week = cfg["week"]
+    uitz = {str(k): int(v) for k, v in (cfg.get("uitzonderingen") or {}).items()}
+    afwezig = adapt.afwezigheid(cfg.get("afwezig") or [])
+    ritten = status.get("ritten", {}) or {}
+    log: list[str] = []
+    v = vandaag.isoformat()
+
+    plan = adapt.basis_kopie(basis, vk)
+    # Lang geleden: die ritten halen we niet meer op, dus de status van toen bewaren.
+    grens = (vandaag - timedelta(days=FROZEN_DAGEN)).isoformat()
+    vorig = {x["datum"]: x for x in oud}
+    for s in plan:
+        if s["datum"] < grens and s["datum"] in vorig:
+            for k in ("status", "score"):
+                if k in vorig[s["datum"]]:
+                    s[k] = vorig[s["datum"]][k]
+    adapt.markeer(plan, ritten, vandaag, afwezig, vanaf=grens)
+    log += adapt.herplan_gemist(plan, week, vandaag)
+    _extra_dagen(plan, uitz, vandaag, week, vk)
+    log += adapt.pas_afwezigheid_toe(plan, afwezig, vandaag)
+
+    tot = (vandaag + timedelta(days=HORIZON - 1)).isoformat()
+    venster = [s for s in plan if v <= s["datum"] <= tot and s["status"] == "gepland"]
+    week_kort = [s for s in venster if s["datum"] <= (vandaag + timedelta(days=6)).isoformat()]
+    log += adapt.pas_uitzonderingen_toe(venster, uitz, week)
+    log += adapt.pas_ongepland_toe(plan, venster, ritten, vandaag, week)
+    log += adapt.pas_vorm_toe([s for s in week_kort if s["soort"] != "rust"], status.get("vorm"))
+    objectief, _ = adapt.objectieve_readiness(status.get("wellness") or [], vandaag)
+    score = adapt.readiness_score(fb["readiness"].get(v), objectief)
+    log += adapt.pas_readiness_toe(venster, score, vandaag)
+
+    niv = adapt.niveaus(plan, fb["rpe"])
+    in_venster = {id(s) for s in venster}
+    for s in plan:
+        if s["datum"] >= v and s["status"] == "gepland":
+            off, uitleg = niv.get(s["soort"], (0.0, ""))
+            s["p_mod"] = s.get("p_mod", 0) + off
+            if uitleg and id(s) in in_venster:
+                s["notities"].append(uitleg)
+
+    if verwachting:
+        log += adapt.pas_weer_toe([s for s in venster if s["soort"] != "rust"], verwachting, week, vk,
+                                  cfg.get("weer", {}) or {})
+    for s in plan:
+        if s["soort"] != "rust" and s["status"] == "gepland":
+            s["omgeving"] = s.get("omgeving") or planner.standaard_omgeving(s, vk)
+        planner.vul_in(s)
+        sc = adapt.trainingsscore(s, ritten.get(s["datum"]))
+        if sc:
+            s["score"] = sc
+    return plan, log
+
+
+def starttijd(week: dict, datum: str) -> str:
+    """Wanneer je op die dag vertrekt; standaard 09:30 in het weekend, 18:30 doordeweeks."""
+    dag = planner.DAGEN[date.fromisoformat(datum).weekday()]
+    return (week.get(dag) or {}).get("start") or ("09:30" if dag in ("za", "zo") else "18:30")
+
+
+def _weer(cfg: dict, ophalen: bool):
+    """Uurverwachting uit de cache (weer.json); vers ophalen als gevraagd of als hij oud is.
+    Lukt ophalen niet, dan de cache zolang die niet ouder dan twee dagen is."""
+    cache = _lees("weer.json", None)
+    leeftijd = None
+    if cache:
+        leeftijd = (datetime.now() - datetime.fromisoformat(cache["opgehaald"])).total_seconds() / 3600
+    if ophalen and (leeftijd is None or leeftijd > WEER_GELDIG_UUR or ophalen == "altijd"):
+        try:
+            loc = cfg["locatie"]
+            v = weather.verwachting(loc["lat"], loc["lon"])
+            cache = {"opgehaald": datetime.now().isoformat(timespec="seconds"), "dag": v.dag, "uur": v.uur}
+            _schrijf("weer.json", cache)
+            leeftijd = 0
+        except Exception:  # noqa: BLE001
+            pass
+    if not cache or leeftijd is None or leeftijd > 48:
+        return None
+    v = weather.Verwachting(cache["dag"], cache["uur"])
+    return lambda d, m: v.venster(d, starttijd(cfg["week"], d), m)
 
 
 # --- bijsturen ----------------------------------------------------------------
 
 @onder_slot
 def bijsturen(cfg: dict, vandaag: date | None = None, ic: Intervals | None = None,
-              verwachting: dict | None = None) -> list[str]:
+              verwachting=None, ververs: bool = True, weer_ophalen: bool | str = True) -> list[str]:
+    """ververs=True (ochtendtimer, knop Bijsturen): ritten, wellness en weer vers ophalen.
+    ververs=False (invoer in het scherm): alleen de caches gebruiken, dus direct klaar."""
     vandaag = vandaag or date.today()
-    plan, status, fb = laad_plan(), laad_status(), laad_feedback()
-    if not plan:
+    basis = laad_basis()
+    if not basis:
         return ["Nog geen schema. Maak eerst een schema."]
-    vk = cfg.get("voorkeuren", {}) or {}
-    week = cfg["week"]
-    uitz = {str(k): int(v) for k, v in (cfg.get("uitzonderingen") or {}).items()}
+    status, fb = laad_status(), laad_feedback()
     log: list[str] = []
-    ic = ic or client(cfg)
 
-    ritten, vorm = None, None
-    if ic:
-        try:
-            acts = ic.activiteiten(vandaag - timedelta(days=28), vandaag)
-            ritten = adapt.ritten_per_dag(acts)
-            well = [w for w in ic.wellness(vandaag - timedelta(days=2), vandaag) if w.get("ctl") is not None]
-            if well:
-                laatste = well[-1]
-                status.update(ctl=round(laatste["ctl"]), atl=round(laatste["atl"]))
-                vorm = laatste["ctl"] - laatste["atl"]
-                status["vorm"] = round(vorm)
-                if eftp_uit(laatste):
-                    status["eftp"] = eftp_uit(laatste)
-            status["ftp"] = ic.ftp()
-        except Exception as e:  # noqa: BLE001
-            log.append(f"intervals.icu niet bereikbaar: {e}")
-    else:
-        log.append("Geen intervals.icu-sleutel ingesteld: alleen weer en je eigen invoer toegepast.")
-
-    if ritten is not None:
-        status["ritten"] = ritten
-        log += adapt.markeer_en_herplan(plan, set(ritten), week, vandaag)
-        for d, r in ritten.items():  # RPE uit intervals.icu overnemen als je hem daar al gaf
-            if r.get("rpe") and d not in fb["rpe"]:
-                fb["rpe"][d] = int(r["rpe"])
-    ritten = status.get("ritten", {})
-    for s in plan:
-        sc = adapt.trainingsscore(s, ritten.get(s["datum"]))
-        if sc:
-            s["score"] = sc
-
-    _extra_dagen(plan, uitz, vandaag, week, vk)
-    tot = (vandaag + timedelta(days=HORIZON - 1)).isoformat()
-    venster = adapt.reset_venster(plan, vandaag.isoformat(), tot, vk)
-    for s in venster:
-        s.pop("p_mod", None)
-    week_kort = [s for s in venster if s["datum"] <= (vandaag + timedelta(days=6)).isoformat()]
-
-    log += adapt.pas_uitzonderingen_toe(venster, uitz, week)
-    log += adapt.pas_ongepland_toe(plan, venster, ritten, vandaag, week)
-    log += adapt.pas_vorm_toe(week_kort, vorm)
-    log += adapt.pas_readiness_toe(venster, fb["readiness"].get(vandaag.isoformat()), vandaag)
-
-    niv = adapt.niveaus(plan, fb["rpe"])
-    status["niveaus"] = {k: v[0] for k, v in niv.items()}
-    in_venster = {id(s) for s in venster}
-    for s in plan:
-        if s["datum"] >= vandaag.isoformat() and s["status"] == "gepland":
-            off, uitleg = niv.get(s["soort"], (0.0, ""))
-            if id(s) in in_venster:
-                s["p_mod"] = s.get("p_mod", 0) + off
-                if uitleg:
-                    s["notities"].append(uitleg)
-            else:
-                s["p_mod"] = off
+    if ververs:
+        ic = ic or client(cfg)
+        if ic:
+            try:
+                acts = ic.activiteiten(vandaag - timedelta(days=28), vandaag)
+                status["ritten"] = adapt.ritten_per_dag(acts)
+                well = ic.wellness(vandaag - timedelta(days=28), vandaag)
+                status["wellness"] = [{k: w.get(k) for k in ("id", "hrv", "restingHR")} for w in well]
+                met_ctl = [w for w in well if w.get("ctl") is not None]
+                if met_ctl:
+                    laatste = met_ctl[-1]
+                    status.update(ctl=round(laatste["ctl"]), atl=round(laatste["atl"]),
+                                  vorm=round(laatste["ctl"] - laatste["atl"]))
+                    if eftp_uit(laatste):
+                        status["eftp"] = eftp_uit(laatste)
+                status["ftp"] = ic.ftp()
+                status["intervals_opgehaald"] = datetime.now().isoformat(timespec="seconds")
+                for d, r in status["ritten"].items():  # RPE uit intervals.icu overnemen
+                    if r.get("rpe") and d not in fb["rpe"]:
+                        fb["rpe"][d] = int(r["rpe"])
+            except Exception as e:  # noqa: BLE001
+                log.append(f"intervals.icu niet bereikbaar: {e}")
+        else:
+            log.append("Geen intervals.icu-sleutel ingesteld: alleen weer en je eigen invoer toegepast.")
 
     if verwachting is None:
-        try:
-            loc = cfg["locatie"]
-            v = weather.verwachting(loc["lat"], loc["lon"])
-            verwachting = lambda d, m: v.venster(d, starttijd(week, d), m)  # noqa: E731
-        except Exception as e:  # noqa: BLE001
-            log.append(f"Weerbericht niet beschikbaar: {e}")
-            verwachting = {}
-    log += adapt.pas_weer_toe([s for s in venster if s["soort"] != "rust"], verwachting, week, vk,
-                              cfg.get("weer", {}) or {})
+        verwachting = _weer(cfg, ("altijd" if ververs else True) if weer_ophalen else False)
+        if verwachting is None and weer_ophalen:
+            log.append("Geen weerbericht beschikbaar.")
 
-    for s in plan:
-        if s["datum"] >= vandaag.isoformat() and s["status"] == "gepland":
-            planner.vul_in(s)
+    plan, extra = afleiden(basis, cfg, status, fb, verwachting, vandaag, laad_plan())
+    log += extra
     status["bijgestuurd"] = datetime.now().strftime("%d-%m %H:%M")
     status["bijgestuurd_iso"] = datetime.now().isoformat(timespec="seconds")
     status["log"] = log
@@ -291,20 +353,34 @@ def sync(cfg: dict, vandaag: date | None = None, ic: Intervals | None = None) ->
     return f"{len(events)} trainingen naar intervals.icu gezet" + (f", {weg} oude verwijderd." if weg else ".")
 
 
-def pas_toe(cfg: dict | None = None) -> str:
-    """Na elke wijziging: bijsturen en, als dat kan, meteen synchroniseren."""
+def sync_veilig(cfg: dict | None = None) -> str:
+    """Sync die nooit een fout gooit; een fout komt in status (en daarmee in /health)."""
     cfg = cfg or laad_config()
-    log = bijsturen(cfg)
-    if client(cfg):
-        try:
-            log.append(sync(cfg))
-        except Exception as e:  # noqa: BLE001
-            log.append(f"Synchroniseren mislukt: {e}")
-            with vergrendeld():
-                st = laad_status()
-                st["sync_fout"] = f"{datetime.now().isoformat(timespec='seconds')} {e}"
-                _schrijf("status.json", st)
-    return " ".join(log)
+    if not client(cfg):
+        return ""
+    try:
+        return sync(cfg)
+    except Exception as e:  # noqa: BLE001
+        with vergrendeld():
+            st = laad_status()
+            st["sync_fout"] = f"{datetime.now().isoformat(timespec='seconds')} {e}"
+            _schrijf("status.json", st)
+        return f"Synchroniseren mislukt: {e}"
+
+
+def pas_toe(cfg: dict | None = None, ververs: bool = True) -> str:
+    """Bijsturen en synchroniseren in één keer (ochtendtimer en de knop Bijsturen)."""
+    cfg = cfg or laad_config()
+    log = bijsturen(cfg, ververs=ververs)
+    s = sync_veilig(cfg)
+    return " ".join(log + ([s] if s else []))
+
+
+def pas_toe_snel(cfg: dict | None = None) -> str:
+    """Na invoer in het scherm: direct lokaal bijsturen met de caches. De sync naar
+    intervals.icu doet de webapp daarna op de achtergrond (sync_veilig)."""
+    cfg = cfg or laad_config()
+    return " ".join(bijsturen(cfg, ververs=False))
 
 
 def gezondheid(nu: datetime | None = None, max_uren: int = 36) -> tuple[bool, dict]:

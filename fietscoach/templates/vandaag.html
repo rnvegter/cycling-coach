@@ -11,7 +11,10 @@
   <div class="fc-tile {% if status.vorm is defined and status.vorm is not none and status.vorm < -20 %}fc-tile--neg{% endif %}">
     <b>{{ '%+d'|format(status.vorm) if status.vorm is defined and status.vorm is not none else '–' }}</b><span>Vorm</span></div>
 </div>
-{% if status.eftp and status.ftp and status.eftp > status.ftp * 1.03 %}
+{% if ftp_test_gedaan and status.eftp %}
+<p class="wx-status t-baking">Ramp-test gereden op {{ datumlabel(ftp_test_gedaan.datum, true) }}. intervals.icu schat je FTP nu op <b class="wx-num">{{ status.eftp }} W</b>{% if status.ftp %} (ingesteld: {{ status.ftp }} W){% endif %}.
+  Neem de nieuwe waarde over in <a href="https://intervals.icu/settings" target="_blank" rel="noopener" style="color:inherit">intervals.icu → Settings</a>; alle trainingen schuiven mee.</p>
+{% elif status.eftp and status.ftp and status.eftp > status.ftp * 1.03 %}
 <p class="wx-status t-warm">Je eFTP ({{ status.eftp }} W) ligt duidelijk boven je FTP ({{ status.ftp }} W). Overweeg je FTP in intervals.icu op te hogen.</p>
 {% endif %}
 
@@ -28,6 +31,7 @@
 <form class="wx-card t-cool" method="post" action="/readiness">
   <p class="wx-eyebrow">Readiness</p>
   <h2 class="wx-heading">Hoe voel je je vandaag?</h2>
+  {% if hrv.uitleg %}<p class="wx-note" style="margin:0 0 var(--sp-3)">Uit je horloge: {{ hrv.uitleg }}{% if hrv.score %} · <b style="color:var(--signal)">minder hersteld dan normaal</b>{% endif %}</p>{% endif %}
   <span class="wx-label">Benen · 1 zwaar en stijf – 5 fris</span>
   <div class="wx-choice">
     {% for n in range(1, 6) %}<input type="radio" name="benen" id="b{{ n }}" value="{{ n }}" required {% if n == 4 %}checked{% endif %}><label class="wx-chip" for="b{{ n }}">{{ n }}</label>{% endfor %}
@@ -47,7 +51,8 @@
 <section class="wx-card {{ klasse(t) }}">
   <div class="wx-card__head">
     <p class="wx-eyebrow" style="margin:0">{{ 'Vandaag' if t.datum == vandaag else 'Volgende training' }} · {{ datumlabel(t.datum, true) }}</p>
-    {% if readiness %}<span class="wx-chip">readiness <b>{{ '%.1f'|format((readiness.benen + readiness.energie) / 2) }}</b></span>{% endif %}
+    {% if readiness %}<span class="wx-chip">readiness <b>{{ '%.1f'|format((readiness.benen + readiness.energie) / 2) }}</b></span>
+    {% elif hrv.score %}<span class="wx-chip" title="{{ hrv.uitleg }}">HRV <b>{{ '%.1f'|format(hrv.score) }}</b></span>{% endif %}
   </div>
   <h2 class="fc-today__name">{{ t.naam }}</h2>
   <div class="fc-meta">

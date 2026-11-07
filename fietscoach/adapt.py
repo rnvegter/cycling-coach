@@ -12,46 +12,133 @@ def _maandag(d: date) -> date:
     return d - timedelta(days=d.weekday())
 
 
-def markeer_en_herplan(plan: list[dict], rit_datums: set[str], week: dict, vandaag: date) -> list[str]:
-    """Zet afgelopen trainingen op gedaan/gemist en schuif gemiste intervaltrainingen
-    door naar een latere duurrit-dag in dezelfde week."""
-    log = []
+def basis_kopie(basis: list[dict], vk: dict) -> list[dict]:
+    """Verse werkkopie van het basisschema. Het schema wordt elke keer opnieuw
+    afgeleid uit basis + invoer; niets aan de basis wordt ooit ter plekke gewijzigd."""
+    uit = []
+    for b in basis:
+        s = {k: v for k, v in b.items() if k not in ("weer", "weer_slecht", "p_mod", "herkomst",
+                                                      "verschoven", "score", "naam", "beschrijving", "duur")}
+        s.update(soort=b["basis_soort"], minuten=b["basis_minuten"], status="gepland", notities=[])
+        s["omgeving"] = standaard_omgeving(s, vk)
+        uit.append(s)
+    return sorted(uit, key=lambda s: s["datum"])
+
+
+def is_gedaan(s: dict, rit: dict | None) -> bool:
+    """Gereden is niet automatisch gedaan: een woon-werkrit op een intervaldag telt
+    niet. Gedaan als intervals.icu de rit aan de geplande training koppelde, of
+    als de rit minstens 60% van de geplande duur was."""
+    if not rit:
+        return False
+    if rit.get("gepaard"):
+        return True
+    return rit["minuten"] >= 0.6 * max(s["basis_minuten"], 1)
+
+
+def markeer(plan: list[dict], ritten: dict[str, dict], vandaag: date, afwezig, vanaf: str = "") -> None:
     v = vandaag.isoformat()
     for s in plan:
-        if s["status"] == "gepland" and s["datum"] < v:
-            if s["datum"] in rit_datums:
-                s["status"] = "gedaan"
-            else:
-                s["status"] = "vervallen" if s["soort"] == "rust" else "gemist"
-    ma = _maandag(vandaag).isoformat()
-    for s in plan:
-        if (s["status"] != "gemist" or s.get("verschoven") or s["datum"] < ma
-                or s["basis_soort"] not in VERPLAATSBAAR):
+        if not (vanaf <= s["datum"] < v):
             continue
-        week_eind = (_maandag(vandaag) + timedelta(days=6)).isoformat()
-        doelen = [t for t in plan if v <= t["datum"] <= week_eind and t["status"] == "gepland"
-                  and t["rol"] in ("duur", "herstel", "extra") and not t.get("herkomst")
-                  and beschikbaar(week, t["dag"]) >= 45]
+        rit = ritten.get(s["datum"])
+        if afwezig(s["datum"]):
+            s["status"] = "afwezig"
+        elif s["soort"] == "rust":
+            s["status"] = "gedaan" if rit else "vervallen"
+        elif is_gedaan(s, rit):
+            s["status"] = "gedaan"
+        else:
+            s["status"] = "gemist"
+            if rit:
+                s["notities"].append(f"Wel gereden ({rit['minuten']} min), maar te kort voor deze training")
+
+
+def herplan_gemist(plan: list[dict], week: dict, vandaag: date) -> list[str]:
+    """Gemiste intervaltraining van deze week naar een latere duurdag in dezelfde week."""
+    log = []
+    v = vandaag.isoformat()
+    ma = _maandag(vandaag).isoformat()
+    zo = (_maandag(vandaag) + timedelta(days=6)).isoformat()
+    for s in plan:
+        if s["status"] != "gemist" or s["datum"] < ma or s["basis_soort"] not in VERPLAATSBAAR:
+            continue
+        doelen = [t for t in plan if v <= t["datum"] <= zo and t["status"] == "gepland"
+                  and t["rol"] in ("duur", "herstel", "extra") and t["soort"] in ("duur", "herstel")
+                  and not t.get("herkomst") and beschikbaar(week, t["dag"]) >= 45]
         if not doelen:
             continue
         t = max(doelen, key=lambda x: beschikbaar(week, x["dag"]))
-        t["basis_soort"] = s["basis_soort"]
-        t["basis_minuten"] = min(beschikbaar(week, t["dag"]), s["basis_minuten"])
+        t["soort"] = s["basis_soort"]
+        t["minuten"] = min(beschikbaar(week, t["dag"]), s["basis_minuten"])
+        t["variant"] = s.get("variant", 0)  # dezelfde vorm als die je miste, niet die van de dag
         t["herkomst"] = f"Verschoven van {s['dag']} (gemist)"
+        t["notities"].append(t["herkomst"])
         s["verschoven"] = True
-        log.append(f"Gemiste {s['basis_soort']} van {s['datum']} verschoven naar {t['datum']}.")
+        log.append(f"Gemiste {s['basis_soort']} van {s['dag']} naar {t['dag']}.")
     return log
 
 
-def reset_venster(plan: list[dict], van: str, tot: str, vk: dict) -> list[dict]:
-    venster = [s for s in plan if van <= s["datum"] <= tot and s["status"] == "gepland"]
-    for s in venster:
-        s["soort"], s["minuten"] = s["basis_soort"], s["basis_minuten"]
-        s["notities"] = [s["herkomst"]] if s.get("herkomst") else []
-        s.pop("weer", None)
-        s.pop("weer_slecht", None)
-        s["omgeving"] = standaard_omgeving(s, vk)
-    return sorted(venster, key=lambda s: s["datum"])
+def afwezigheid(perioden: list[dict]):
+    """Functie datum -> periode of None. Perioden: [{"van": "...", "tot": "...", "reden": "..."}]."""
+    lijst = [(str(p["van"]), str(p["tot"]), p.get("reden") or "Afwezig") for p in perioden or []]
+
+    def op(datum: str):
+        return next(((v, t, r) for v, t, r in lijst if v <= datum <= t), None)
+    op.perioden = lijst
+    return op
+
+
+def pas_afwezigheid_toe(plan: list[dict], afwezig, vandaag: date) -> list[str]:
+    """Afwezig: geen trainingen. Na een afwezigheid van 5+ dagen eerst drie dagen
+    zonder intervallen, zodat je niet koud in een zware training stapt."""
+    v = vandaag.isoformat()
+    log = []
+    for s in plan:
+        if s["datum"] >= v and s["status"] == "gepland" and afwezig(s["datum"]):
+            s["soort"], s["minuten"] = "rust", 0
+            s["notities"].append(afwezig(s["datum"])[2])
+    for van, tot, reden in afwezig.perioden:
+        lengte = (date.fromisoformat(tot) - date.fromisoformat(van)).days + 1
+        if lengte < 5:
+            continue
+        eind = date.fromisoformat(tot)
+        na = {(eind + timedelta(days=i)).isoformat() for i in range(1, 4)}
+        for s in plan:
+            if s["datum"] in na and s["datum"] >= v and s["status"] == "gepland" and (
+                    s["soort"] in VERPLAATSBAAR or s["soort"] in ("lange_rit_tempo", "openers")):
+                s["soort"] = "duur" if s["soort"] != "lange_rit_tempo" else "lange_rit"
+                s["notities"].append("Rustig weer opstarten na afwezigheid")
+        if tot >= v:
+            log.append(f"{reden}: {van[8:10]}-{van[5:7]} t/m {tot[8:10]}-{tot[5:7]}.")
+    return log
+
+
+def objectieve_readiness(wellness: list[dict], vandaag: date) -> tuple[float | None, str]:
+    """Readiness uit HRV en rusthartslag (als je horloge die aan intervals.icu levert).
+    Vergeleken met je eigen gemiddelde van de 28 dagen ervoor: HRV duidelijk lager
+    of rusthartslag duidelijk hoger = minder hersteld."""
+    from statistics import mean, pstdev
+    v = vandaag.isoformat()
+    vandaag_w = next((w for w in wellness if w.get("id") == v), None)
+    if not vandaag_w:
+        return None, ""
+    eerder = [w for w in wellness if w.get("id", "") < v]
+    signalen, uitleg = 0, []
+    for veld, naam, slecht in (("hrv", "HRV", -1), ("restingHR", "rusthartslag", 1)):
+        reeks = [w[veld] for w in eerder if w.get(veld)]
+        nu = vandaag_w.get(veld)
+        if not nu or len(reeks) < 7:
+            continue
+        gem, sd = mean(reeks), pstdev(reeks)
+        drempel = max(sd, 0.05 * gem if veld == "hrv" else 3)
+        afwijkend = (nu < gem - drempel) if slecht < 0 else (nu > gem + drempel)
+        uitleg.append(f"{naam} {nu:.0f} (normaal {gem:.0f})")
+        signalen += afwijkend
+    if not uitleg:
+        return None, ""
+    score = {0: None, 1: 2.5, 2: 2.0}[signalen]
+    return score, " · ".join(uitleg)
 
 
 def pas_vorm_toe(venster: list[dict], vorm: float | None) -> list[str]:
@@ -153,7 +240,7 @@ def pas_weer_toe(venster: list[dict], verwachting, week: dict, vk: dict, wc: dic
 
 from statistics import mean  # noqa: E402
 
-from .workouts import VERWACHTE_IF, VERWACHTE_RPE  # noqa: E402
+from .workouts import SOORTNAAM, VERWACHTE_IF, VERWACHTE_RPE  # noqa: E402
 
 LANG = ("lange_rit", "lange_rit_tempo")
 
@@ -192,6 +279,7 @@ def _verplaats(s: dict, venster: list[dict], avail, reden: str) -> dict | None:
         return None
     t = max(opties, key=avail)
     t["soort"], t["minuten"] = s["soort"], min(avail(t), s["minuten"])
+    t["variant"] = s.get("variant", 0)
     t["notities"].append(f"{reden} — verplaatst van {s['dag']}")
     return t
 
@@ -213,7 +301,7 @@ def pas_uitzonderingen_toe(venster: list[dict], uitz: dict[str, int], week: dict
             s["notities"].append("Geen tijd deze dag")
             if oud["soort"] in VERPLAATSBAAR or oud["soort"] in LANG:
                 t = _verplaats(oud, venster, avail, "Geen tijd op " + oud["dag"])
-                log.append(f"{oud['naam']} van {oud['dag']} {oud['datum'][8:10]}-{oud['datum'][5:7]} "
+                log.append(f"{SOORTNAAM.get(oud['soort'], oud['soort'])} van {oud['dag']} {oud['datum'][8:10]}-{oud['datum'][5:7]} "
                            + (f"naar {t['dag']} {t['datum'][8:10]}-{t['datum'][5:7]}." if t
                               else "vervalt: geen ruimte in die week."))
         elif m < s["minuten"]:
@@ -237,7 +325,8 @@ def ritten_per_dag(activiteiten: list[dict]) -> dict[str, dict]:
         if "Ride" not in (a.get("type") or ""):
             continue
         d = a["start_date_local"][:10]
-        r = uit.setdefault(d, {"minuten": 0, "load": 0, "if": None, "rpe": None, "naam": a.get("name", "")})
+        r = uit.setdefault(d, {"minuten": 0, "load": 0, "if": None, "rpe": None, "naam": a.get("name", ""),
+                               "gepaard": False})
         r["minuten"] += round((a.get("moving_time") or 0) / 60)
         r["load"] += a.get("icu_training_load") or 0
         intens = a.get("icu_intensity")
@@ -245,6 +334,10 @@ def ritten_per_dag(activiteiten: list[dict]) -> dict[str, dict]:
             r["if"] = round(intens / 100 if intens > 3 else intens, 2)
         if a.get("icu_rpe"):
             r["rpe"] = a["icu_rpe"]
+        if a.get("paired_event_id"):
+            r["gepaard"] = True
+        if a.get("compliance") is not None:
+            r["compliance"] = a["compliance"]
     return uit
 
 
@@ -276,12 +369,16 @@ def pas_ongepland_toe(plan: list[dict], venster: list[dict], ritten: dict[str, d
     return log
 
 
-def pas_readiness_toe(venster: list[dict], readiness: dict | None, vandaag: date) -> list[str]:
-    """Hoe voel je je vandaag? Benen en energie, elk 1 (slecht) tot 5 (top)."""
-    if not readiness:
-        return []
-    score = (readiness["benen"] + readiness["energie"]) / 2
-    if score > 3:
+def readiness_score(handmatig: dict | None, objectief: float | None) -> float | None:
+    """Laagste van wat je zelf invult (benen en energie, 1–5) en wat HRV/rusthartslag zeggen."""
+    scores = [x for x in ((handmatig["benen"] + handmatig["energie"]) / 2 if handmatig else None, objectief)
+              if x is not None]
+    return min(scores) if scores else None
+
+
+def pas_readiness_toe(venster: list[dict], score: float | None, vandaag: date) -> list[str]:
+    """Readiness 1 (slecht) tot 5 (top). Bij 3 of lager vandaag lichter, bij 2 of lager ook morgen."""
+    if score is None or score > 3:
         return []
     dagen = {vandaag.isoformat(), (vandaag + timedelta(days=1)).isoformat()}
     if score > 2:
@@ -311,5 +408,7 @@ def trainingsscore(s: dict, rit: dict | None) -> dict | None:
     verwacht = VERWACHTE_IF.get(s["soort"])
     if rit.get("if") and verwacht:
         uit["intensiteit"] = max(0, round(100 - abs(rit["if"] - verwacht) / verwacht * 250))
+    if rit.get("compliance") is not None:  # intervals.icu's eigen vergelijking met de geplande training
+        uit["intervals"] = round(rit["compliance"])
     uit["totaal"] = round(mean(uit.values()))
     return uit

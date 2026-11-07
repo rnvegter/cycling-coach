@@ -49,7 +49,10 @@ def test_plan():
     assert len(plan) == 12 * 5
     wk4 = [s for s in plan if s["week"] == 4]
     assert all(s["herstelweek"] for s in wk4)
-    assert any(s["soort"] == "ftp_test" for s in wk4)
+    # standaard elke 8 weken een ramp-test: niet in week 4, wel in week 8
+    assert not any(s["soort"] == "ftp_test" for s in wk4)
+    assert any(s["soort"] == "ftp_test" for s in plan if s["week"] == 8)
+    assert sum(s["soort"] == "ftp_test" for s in plan) == 1
     assert {s["fase"] for s in plan} == {"basis", "opbouw", "piek"}
     assert all(s["omgeving"] == "binnen" for s in plan if s["soort"] in workouts.OPTIES)
 
@@ -302,14 +305,14 @@ def test_schermen(monkeypatch):
     assert {s["soort"] for s in toekomst if s["rol"].startswith("q") and not s["herstelweek"]} == {"sweetspot"}
     s = next(s for s in plan if s["soort"] == "sweetspot")
     r = c.get(f"/zwo/{s['datum']}")
-    assert r.status_code == 200 and "<IntervalsT" in r.text
+    assert r.status_code == 200 and "<workout>" in r.text and ("<IntervalsT" in r.text or "<SteadyState" in r.text)
 
 
 # --- bibliotheek ------------------------------------------------------------------
 
 from fietscoach import bibliotheek  # noqa: E402
 
-STAP_RPM = re.compile(r"^- (\d+m)?(\d+s)? (ramp \d+-\d+%|\d+%)( \d+rpm)?$")
+STAP_RPM = re.compile(r"^- ([A-Z][a-z]+ )?(\d+m)?(\d+s)? (ramp \d+-\d+%|\d+%|freeride)( \d+rpm)?$")
 
 
 @pytest.mark.parametrize("soort", sorted(bibliotheek.BIBLIOTHEEK))
@@ -590,3 +593,230 @@ def test_starttijd_opslaan_en_cwem_link(monkeypatch):
     html = c.get("/").text
     assert "https://cwem.dockerapp.org/#ride" in html  # zaterdag: buiten
     assert 'name="start_za"' in c.get("/instellingen").text
+
+
+def test_korte_harde_stukken_zonder_erg():
+    """Niets korter dan een minuut boven 110% in ERG; in .zwo als FreeRide."""
+    for soort in bibliotheek.BIBLIOTHEEK:
+        for v in range(bibliotheek.aantal(soort)):
+            for m in (45, 60, 90, 150):
+                t = workouts.bouw(soort, m, 0.5, "opbouw", v)
+                for b in t.blokken:
+                    for st in b.stappen:
+                        hoog = (max(st.pct) if isinstance(st.pct, tuple) else st.pct) > 110
+                        if hoog and st.minuten < 1:
+                            assert st.vrij, (t.naam, st)
+    t = workouts.bouw("vo2max", 60, 0.5, "", 1)  # 30/15's
+    assert "- Hard 30s freeride" in t.beschrijving() and "<FreeRide" in workouts.zwo(t)
+
+
+@pytest.mark.parametrize("elke,weken", [(4, [4, 8, 12]), (8, [8]), (12, [12]), (0, [])])
+def test_ftp_test_interval(elke, weken):
+    cfg = CFG | {"voorkeuren": {"ftp_test_weken": elke}}
+    plan = planner.genereer(cfg, date(2026, 11, 9))
+    assert sorted(s["week"] for s in plan if s["soort"] == "ftp_test") == weken
+
+
+# --- gereden is niet gedaan, afwezigheid, HRV -------------------------------------
+
+class RittenNep(NepIntervals):
+    def __init__(self, acts, wellness=None):
+        super().__init__([], 60, 60)
+        self.acts, self.well = acts, wellness
+
+    def activiteiten(self, v, t):
+        return self.acts
+
+    def wellness(self, v, t):
+        return self.well if self.well is not None else super().wellness(v, t)
+
+
+def _rit(d, minuten, gepaard=False):
+    return {"start_date_local": d + "T08:00:00", "type": "Ride", "moving_time": minuten * 60,
+            "icu_training_load": minuten, **({"paired_event_id": 77} if gepaard else {})}
+
+
+def test_woon_werkrit_telt_niet_als_intervaltraining():
+    service.genereer(CFG, date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    # di: sweetspot 60 → 20 min woon-werk. do: tempo 75 → 25 min, maar door intervals.icu gekoppeld.
+    ic = RittenNep([_rit("2026-11-10", 20), _rit("2026-11-12", 25, gepaard=True)])
+    service.bijsturen(CFG, date(2026, 11, 13), ic, weer(date(2026, 11, 13)))
+    plan = {s["datum"]: s for s in service.laad_plan()}
+    assert plan["2026-11-10"]["status"] == "gemist"
+    assert any("te kort" in n for n in plan["2026-11-10"]["notities"])
+    assert plan["2026-11-12"]["status"] == "gedaan"
+    # de gemiste sweetspot schuift naar zondag, met de vorm van dinsdag
+    assert plan["2026-11-15"]["herkomst"].startswith("Verschoven van di")
+    assert plan["2026-11-15"]["variant"] == plan["2026-11-10"]["variant"]
+
+
+def test_afwezigheid_en_rustig_opstarten():
+    cfg = CFG | {"afwezig": [{"van": "2026-11-16", "tot": "2026-11-22", "reden": "Vakantie"}]}
+    service.genereer(cfg, date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    service.bijsturen(cfg, date(2026, 11, 10), NepIntervals([], 60, 60), weer(date(2026, 11, 10)))
+    plan = {s["datum"]: s for s in service.laad_plan()}
+    assert all(plan[d]["soort"] == "rust" for d in plan if "2026-11-16" <= d <= "2026-11-22")
+    assert plan["2026-11-24"]["soort"] == "duur"  # di na terugkomst: geen intervallen
+    assert any("opstarten" in n for n in plan["2026-11-24"]["notities"])
+    assert plan["2026-11-26"]["soort"] in planner.INTERVALSOORTEN  # do weer gewoon
+    # ook buiten het venster van 14 dagen staat het goed (afgeleid, niet ter plekke)
+    assert plan["2026-11-21"]["naam"] == "Rust"
+    # sync stuurt niets voor afwezige dagen
+    ic = NepIntervals([], 60, 60)
+    service.sync(cfg, date(2026, 11, 10), ic)
+    assert not {e["external_id"] for e in ic.upserts} & {f"fietscoach-2026-11-{d}" for d in range(16, 23)}
+
+
+def test_readiness_uit_hrv():
+    from fietscoach import adapt as a
+    basis = [{"id": f"2026-10-{d:02d}", "hrv": 50 + (d % 3), "restingHR": 50 + (d % 2)} for d in range(10, 31)]
+    goed, uitleg = a.objectieve_readiness(basis + [{"id": "2026-11-01", "hrv": 51, "restingHR": 50}], date(2026, 11, 1))
+    assert goed is None and "HRV 51" in uitleg
+    een, _ = a.objectieve_readiness(basis + [{"id": "2026-11-01", "hrv": 40, "restingHR": 50}], date(2026, 11, 1))
+    twee, _ = a.objectieve_readiness(basis + [{"id": "2026-11-01", "hrv": 40, "restingHR": 60}], date(2026, 11, 1))
+    assert een == 2.5 and twee == 2.0
+    assert a.objectieve_readiness(basis[:3] + [{"id": "2026-11-01", "hrv": 40}], date(2026, 11, 1))[0] is None
+    assert a.readiness_score({"benen": 4, "energie": 4}, 2.5) == 2.5
+
+
+def test_lage_hrv_maakt_vandaag_lichter():
+    well = [{"id": (date(2026, 11, 10) - timedelta(days=i)).isoformat(), "hrv": 50 + i % 3, "restingHR": 50,
+             "ctl": 60, "atl": 60} for i in range(1, 22)]
+    well.append({"id": "2026-11-10", "hrv": 38, "restingHR": 61, "ctl": 60, "atl": 60})
+    service.genereer(CFG, date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    service.bijsturen(CFG, date(2026, 11, 10), RittenNep([], sorted(well, key=lambda w: w["id"])), weer(date(2026, 11, 10)))
+    di = next(s for s in service.laad_plan() if s["datum"] == "2026-11-10")
+    assert di["soort"] == "duur" and any("Readiness laag" in n for n in di["notities"])
+
+
+def test_afleiden_is_herhaalbaar_en_raakt_basis_niet():
+    service.genereer(CFG, date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    basis_voor = _json.dumps(service.laad_basis(), sort_keys=True)
+    cfg = CFG | {"uitzonderingen": {"2026-11-12": 0}}
+    for _ in range(3):
+        service.bijsturen(cfg, date(2026, 11, 13), RittenNep([_rit("2026-11-10", 20)]), weer(date(2026, 11, 13)))
+    een = _json.dumps(service.laad_plan(), sort_keys=True)
+    service.bijsturen(cfg, date(2026, 11, 13), RittenNep([_rit("2026-11-10", 20)]), weer(date(2026, 11, 13)))
+    assert _json.dumps(service.laad_plan(), sort_keys=True) == een
+    assert _json.dumps(service.laad_basis(), sort_keys=True) == basis_voor
+
+
+# --- webapp: beveiliging, snelheid, afwezigheid ----------------------------------
+
+@pytest.fixture
+def web_cfg(monkeypatch):
+    from fietscoach import web
+    cfg = dict(VOORBEELD, uitzonderingen={}, afwezig=[])
+    monkeypatch.setattr(service, "laad_config", lambda *a: cfg)
+    monkeypatch.setattr(service, "bewaar_instellingen", lambda c: cfg.update(c))
+    monkeypatch.setattr(web, "vandaag", lambda: date(2026, 11, 10))
+    return cfg
+
+
+def test_andere_site_mag_geen_formulier_sturen(web_cfg):
+    from fastapi.testclient import TestClient
+    from fietscoach import web
+    service.genereer(web_cfg, date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    c = TestClient(web.app)
+    r = c.post("/rpe", data={"datum": "2026-11-10", "rpe": "5"}, headers={"Origin": "https://kwaad.example"},
+               follow_redirects=False)
+    assert r.status_code == 403 and "2026-11-10" not in service.laad_feedback()["rpe"]
+    r = c.post("/rpe", data={"datum": "2026-11-10", "rpe": "5"}, headers={"Origin": "http://testserver"},
+               follow_redirects=False)
+    assert r.status_code == 303 and service.laad_feedback()["rpe"]["2026-11-10"] == 5
+    # achter Caddy: X-Forwarded-Host telt
+    r = c.post("/rpe", data={"datum": "2026-11-11", "rpe": "6"},
+               headers={"Origin": "https://fiets.example", "X-Forwarded-Host": "fiets.example"}, follow_redirects=False)
+    assert r.status_code == 303
+    r = c.post("/rpe", data={"datum": "2026-11-11", "rpe": "6", "terug": "https://kwaad.example"},
+               headers={"Origin": "http://testserver"}, follow_redirects=False)
+    assert r.headers["location"].startswith("/?")  # geen open redirect
+
+
+def test_invoer_is_direct_en_sync_op_achtergrond(web_cfg, monkeypatch):
+    from fastapi.testclient import TestClient
+    from fietscoach import web
+    service.genereer(web_cfg, date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    aanroepen = []
+    monkeypatch.setattr(service, "sync_veilig", lambda *a: aanroepen.append("sync") or "")
+    netwerk = []
+    monkeypatch.setattr(service, "client", lambda cfg: netwerk.append("intervals") or None)
+    monkeypatch.setattr(service.weather, "verwachting", lambda *a: netwerk.append("weer"))
+    r = TestClient(web.app).post("/uitzondering", data={"datum": "2026-11-10", "minuten": "45"}, follow_redirects=False)
+    assert r.status_code == 303 and aanroepen == ["sync"]
+    assert "intervals" not in netwerk  # geen ritten/wellness ophalen bij een klik
+    s = next(s for s in service.laad_plan() if s["datum"] == "2026-11-10")
+    assert s["minuten"] == 45
+
+
+def test_afwezigheid_via_scherm(web_cfg, monkeypatch):
+    from fastapi.testclient import TestClient
+    from fietscoach import web
+    monkeypatch.setattr(service, "sync_veilig", lambda *a: "")
+    service.genereer(web_cfg, date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    c = TestClient(web.app)
+    c.post("/afwezig", data={"van": "2026-11-20", "tot": "2026-11-16", "reden": "Skiën"}, follow_redirects=False)
+    assert web_cfg["afwezig"] == [{"van": "2026-11-16", "tot": "2026-11-20", "reden": "Skiën"}]  # omgedraaid
+    assert "Skiën" in c.get("/instellingen").text
+    assert next(s for s in service.laad_plan() if s["datum"] == "2026-11-17")["soort"] == "rust"
+    c.post("/afwezig", data={"weg": "0"}, follow_redirects=False)
+    assert web_cfg["afwezig"] == []
+    r = c.post("/afwezig", data={"van": "", "tot": ""}, follow_redirects=False)
+    assert "Niet%20opgeslagen" in r.headers["location"]
+
+
+def test_ready_en_lettertypes(web_cfg):
+    from fastapi.testclient import TestClient
+    from fietscoach import web
+    c = TestClient(web.app)
+    assert c.get("/ready").json() == {"ok": True}
+    html = c.get("/").text
+    assert "googleapis" not in html and "/static/fonts/fonts.css" in html
+    css = c.get("/static/fonts/fonts.css").text
+    for bestand in re.findall(r'url\("([^"]+)"\)', css):
+        r = c.get("/static/fonts/" + bestand)
+        assert r.status_code == 200 and r.content[:4] == b"wOF2", bestand
+
+
+def test_hrv_en_ftp_voorstel_op_vandaag(web_cfg, monkeypatch):
+    from fastapi.testclient import TestClient
+    from fietscoach import web
+    monkeypatch.setattr(web, "vandaag", lambda: date(2027, 1, 7))
+    cfg = web_cfg | {"doel": {**web_cfg["doel"], "startdatum": "2026-11-09"}}
+    monkeypatch.setattr(service, "laad_config", lambda *a: cfg)
+    service.genereer(cfg, date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    test = next(s for s in service.laad_plan() if s["soort"] == "ftp_test")  # do 31 dec, week 8
+    well = [{"id": (date(2027, 1, 7) - timedelta(days=i)).isoformat(), "hrv": 50, "restingHR": 50,
+             "ctl": 55, "atl": 50, "eftp": 281} for i in range(20, 0, -1)]
+    well.append({"id": "2027-01-07", "hrv": 39, "restingHR": 50, "ctl": 55, "atl": 50, "eftp": 281})
+    ic = RittenNep([_rit(test["datum"], 40, gepaard=True)], well)
+    service.bijsturen(cfg, date(2027, 1, 7), ic, weer(date(2027, 1, 7)))
+    html = TestClient(web.app).get("/").text
+    assert "Ramp-test gereden" in html and "281 W" in html
+    assert "HRV 39 (normaal 50)" in html and "minder hersteld" in html
+
+
+def test_verbindingstest_crasht_niet_op_opzetfout(monkeypatch, capsys):
+    from fietscoach import cli
+    monkeypatch.setattr(service, "laad_config", lambda *a: dict(VOORBEELD))
+    monkeypatch.setattr(service, "client", lambda cfg: (_ for _ in ()).throw(PermissionError("ca-bestand")))
+    monkeypatch.setattr("sys.argv", ["fietscoach", "test"])
+    with pytest.raises(SystemExit) as e:
+        cli.main()
+    assert e.value.code == 1 and "Kon geen verbinding opzetten: PermissionError" in capsys.readouterr().out
+
+
+def test_oude_installatie_stapt_over_op_basis():
+    """Vóór deze versie bestond alleen plan.json (met bijsturingen erin)."""
+    plan = planner.genereer(CFG, date(2026, 11, 9))
+    for s in plan:  # zoals de oude code het achterliet: bijgestuurde velden in het plan
+        s.update(status="gepland", soort="herstel" if s["datum"] == "2026-11-10" else s["soort"],
+                 notities=["oud"], weer="oud", p_mod=-0.3)
+    service._schrijf("plan.json", plan)
+    assert not (service.DATA / "basis.json").exists()
+    service.bijsturen(CFG, date(2026, 11, 9), NepIntervals([], 60, 60), weer(date(2026, 11, 9)))
+    basis = service.laad_basis()
+    assert (service.DATA / "basis.json").exists() and len(basis) == len(plan)
+    di = next(s for s in service.laad_plan() if s["datum"] == "2026-11-10")
+    assert di["soort"] == di["basis_soort"] == "sweetspot"  # oude bijsturing niet blijvend
+    assert "oud" not in di["notities"]

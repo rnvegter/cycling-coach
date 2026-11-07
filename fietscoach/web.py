@@ -6,7 +6,7 @@ from itertools import groupby
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import FastAPI, Request
+from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -16,6 +16,21 @@ from . import planner, service, workouts
 
 HIER = Path(__file__).parent
 app = FastAPI(title="Fietscoach")
+
+
+@app.middleware("http")
+async def zelfde_herkomst(request: Request, call_next):
+    """Formulieren alleen vanaf deze site zelf. Achter Authelia is de browser
+    ingelogd; zonder deze controle zou een andere site via jouw browser acties
+    kunnen uitvoeren (CSRF). Browsers sturen bij een POST altijd Origin mee;
+    ontbreekt die en ook Referer, dan is het geen browser en laten we het door."""
+    if request.method == "POST":
+        from urllib.parse import urlsplit
+        bron = request.headers.get("origin") or request.headers.get("referer")
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+        if bron and urlsplit(bron).netloc != host:
+            return Response("Verzoek van een andere site geweigerd.", status_code=403)
+    return await call_next(request)
 app.mount("/static", StaticFiles(directory=HIER / "static"), name="static")
 templates = Jinja2Templates(directory=HIER / "templates")
 
@@ -70,6 +85,12 @@ def _tijd(waarde) -> str | None:
         return None
 
 
+def _hrv(status: dict, v: date) -> dict:
+    from .adapt import objectieve_readiness
+    score, uitleg = objectieve_readiness(status.get("wellness") or [], v)
+    return {"score": score, "uitleg": uitleg}
+
+
 def _terug(pad: str, msg: str) -> RedirectResponse:
     return RedirectResponse(f"{pad}?msg={quote(msg)}", status_code=303)
 
@@ -98,6 +119,9 @@ def scherm_vandaag(request: Request, msg: str | None = None):
         deze_week=[s for s in plan if maandag <= s["datum"] <= zondag],
         open_fb=service.open_feedback(plan, fb, v),
         readiness=fb["readiness"].get(v.isoformat()),
+        hrv=_hrv(ctx["status"], v),
+        ftp_test_gedaan=next((s for s in reversed(plan) if s["soort"] == "ftp_test" and s["status"] == "gedaan"
+                              and s["datum"] >= (v - timedelta(days=10)).isoformat()), None),
         rpe=fb["rpe"],
         uitzonderingen=sorted((ctx["cfg"].get("uitzonderingen") or {}).items()),
         uitz=ctx["cfg"].get("uitzonderingen") or {},
@@ -139,47 +163,57 @@ def scherm_bibliotheek(request: Request, minuten: int = 60):
 
 # --- acties -------------------------------------------------------------------
 
+def _snel(achtergrond: BackgroundTasks) -> str:
+    """Direct lokaal bijsturen met de caches; de sync naar intervals.icu daarna op de achtergrond."""
+    log = service.pas_toe_snel()
+    achtergrond.add_task(service.sync_veilig)
+    return log
+
+
 @app.post("/readiness")
-async def readiness(request: Request):
+async def readiness(request: Request, achtergrond: BackgroundTasks):
     f = await request.form()
     service.zet_readiness(vandaag().isoformat(), int(f["benen"]), int(f["energie"]))
-    return _terug("/", service.pas_toe())
+    return _terug("/", _snel(achtergrond) or "Readiness opgeslagen.")
 
 
 @app.post("/rpe")
-async def rpe(request: Request):
+async def rpe(request: Request, achtergrond: BackgroundTasks):
     f = await request.form()
     service.zet_rpe(str(f["datum"]), int(f["rpe"]))
-    return _terug(str(f.get("terug") or "/"), "RPE opgeslagen. " + service.pas_toe())
+    terug = str(f.get("terug") or "/")
+    return _terug(terug if terug.startswith("/") else "/", ("RPE opgeslagen. " + _snel(achtergrond)).strip())
 
 
 @app.post("/uitzondering")
-async def uitzondering(request: Request):
+async def uitzondering(request: Request, achtergrond: BackgroundTasks):
     f = await request.form()
     datum = str(f["datum"])
     weg = f.get("weg")
     minuten = None if weg else int(f.get("minuten") or 0)
-    cfg = service.zet_uitzondering(service.laad_config(), datum, minuten)
-    return _terug("/", service.pas_toe(cfg))
+    service.zet_uitzondering(service.laad_config(), datum, minuten)
+    return _terug("/", _snel(achtergrond) or "Aangepast.")
 
 
 @app.post("/bijsturen")
 def bijsturen():
+    """De volledige ronde: ritten, wellness en weer vers ophalen, bijsturen en syncen."""
     return _terug("/", service.pas_toe() or "Bijgestuurd, niets te melden.")
 
 
 @app.post("/genereer")
-def genereer():
+def genereer(achtergrond: BackgroundTasks):
     cfg = service.laad_config()
     try:
         plan = service.genereer(cfg)
     except ValueError as e:
         return _terug("/instellingen", f"Kon geen schema maken: {e}")
-    return _terug("/schema", f"Nieuw schema ({len(plan)} dagen). " + service.pas_toe(cfg))
+    achtergrond.add_task(service.sync_veilig)
+    return _terug("/schema", f"Nieuw schema ({len(plan)} dagen); wordt naar intervals.icu gezet.")
 
 
 @app.post("/instellingen")
-async def instellingen_opslaan(request: Request):
+async def instellingen_opslaan(request: Request, achtergrond: BackgroundTasks):
     f = await request.form()
     cfg = service.laad_config()
     blokken = []
@@ -200,7 +234,8 @@ async def instellingen_opslaan(request: Request):
     cfg["voorkeuren"] = {
         "max_kwaliteit_per_week": int(f.get("max_kwaliteit") or 2),
         "intervallen_binnen": f.get("intervallen_binnen") == "1",
-        "ftp_test": f.get("ftp_test") == "1",
+        "ftp_test": int(f.get("ftp_test_weken") or 8) > 0,
+        "ftp_test_weken": int(f.get("ftp_test_weken") or 8),
         "variatie": f.get("variatie") == "1",
         "max_binnen_minuten": int(f.get("max_binnen") or 120),
     }
@@ -216,8 +251,30 @@ async def instellingen_opslaan(request: Request):
         return _terug("/instellingen", f"Niet opgeslagen: {e}")
     service.bewaar_instellingen(cfg)
     plan = service.genereer(cfg)
-    return _terug("/schema", f"Opgeslagen; schema vanaf vandaag opnieuw opgebouwd ({len(plan)} dagen). "
-                  + service.pas_toe(cfg))
+    achtergrond.add_task(service.sync_veilig)
+    return _terug("/schema", f"Opgeslagen; schema vanaf vandaag opnieuw opgebouwd ({len(plan)} dagen).")
+
+
+@app.post("/afwezig")
+async def afwezig(request: Request, achtergrond: BackgroundTasks):
+    f = await request.form()
+    cfg = service.laad_config()
+    lijst = list(cfg.get("afwezig") or [])
+    if f.get("weg") is not None:
+        i = int(f["weg"])
+        lijst = [p for k, p in enumerate(lijst) if k != i]
+    else:
+        van, tot = str(f.get("van") or ""), str(f.get("tot") or "")
+        try:
+            date.fromisoformat(van), date.fromisoformat(tot)
+        except ValueError:
+            return _terug("/instellingen", "Niet opgeslagen: geef een begin- en einddatum.")
+        if tot < van:
+            van, tot = tot, van
+        lijst.append({"van": van, "tot": tot, "reden": str(f.get("reden") or "Afwezig")[:40]})
+    cfg["afwezig"] = sorted((p for p in lijst if p["tot"] >= vandaag().isoformat()), key=lambda p: p["van"])
+    service.bewaar_instellingen(cfg)
+    return _terug("/instellingen", _snel(achtergrond) or "Afwezigheid bijgewerkt.")
 
 
 @app.get("/zwo/{datum}")
@@ -234,12 +291,26 @@ def zwo(datum: str):
 @app.post("/verbinding")
 def verbinding(request: Request):
     from .intervals import verbindingstest
-    ic = service.client(service.laad_config())
-    if not ic:
-        return _terug("/instellingen", "Niet getest: geen API-sleutel in /etc/fietscoach/config.yaml.")
-    regels = verbindingstest(ic)
+    try:
+        ic = service.client(service.laad_config())
+        if not ic:
+            return _terug("/instellingen", "Niet getest: geen API-sleutel in /etc/fietscoach/config.yaml.")
+        regels = verbindingstest(ic)
+    except Exception as e:  # noqa: BLE001
+        regels = [(False, f"Kon geen verbinding opzetten: {e.__class__.__name__}")]
     tekst = " · ".join(("✓ " if ok else "✗ ") + r for ok, r in regels)
     return _terug("/instellingen", ("Verbinding in orde: " if all(ok for ok, _ in regels) else "Verbinding mislukt: ") + tekst)
+
+
+@app.get("/ready")
+def ready():
+    """Draait de app en kan hij zijn gegevens lezen? Voor het updatescript; los van intervals.icu."""
+    try:
+        service.laad_config()
+        service.laad_plan()
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"ok": False, "fout": str(e)}, status_code=503)
+    return {"ok": True}
 
 
 @app.get("/health")

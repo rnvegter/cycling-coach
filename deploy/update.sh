@@ -42,7 +42,7 @@ fout() { printf '\033[31mFout: %s\033[0m\n' "$*" >&2; exit 1; }
 
 gezond() {
   for _ in $(seq 1 20); do
-    curl -fs -o /dev/null "http://127.0.0.1:$PORT/" && return 0
+    curl -fs -o /dev/null "http://127.0.0.1:$PORT/ready" && return 0
     sleep 1
   done
   return 1

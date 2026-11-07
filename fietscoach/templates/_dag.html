@@ -11,6 +11,7 @@
   <div class="fc-day__sub">
     {% if s.status == 'gemist' %}Gemist{% if s.verschoven %} · doorgeschoven{% endif %}
     {% elif s.status == 'vervallen' %}Vervallen
+    {% elif s.status == 'afwezig' %}Afwezig
     {% elif s.score %}Duur {{ s.score.duur }}{% if s.score.intensiteit is defined %} · intensiteit {{ s.score.intensiteit }}{% endif %}{% if rpe.get(s.datum) %} · RPE {{ rpe[s.datum] }}{% endif %}
     {% else %}{{ s.duur }} min{% if s.weer %} · {{ s.weer }}{% endif %}{% endif %}
     {% if s.notities and s.status == 'gepland' %}<br>→ {{ s.notities|join(' · ') }}{% endif %}

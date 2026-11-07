@@ -317,7 +317,7 @@ pre.fc-opbouw { white-space: pre-wrap; font-family: var(--data); font-size: var(
 .fc-day__sub { grid-column: 2 / -1; font-size: var(--step--1); color: var(--text-dim); }
 .fc-day.is-today { background: var(--surface-2); }
 .fc-day.is-gedaan .fc-day__name::before { content: "✓ "; color: var(--temp-ink); }
-.fc-day.is-gemist .fc-day__name, .fc-day.is-vervallen .fc-day__name { color: var(--text-dim); text-decoration: line-through; }
+.fc-day.is-gemist .fc-day__name, .fc-day.is-vervallen .fc-day__name, .fc-day.is-afwezig .fc-day__name { color: var(--text-dim); text-decoration: line-through; }
 .fc-day.is-rust { box-shadow: none; }
 .fc-day details > summary { cursor: pointer; color: var(--text-dim); font-size: var(--step--1); list-style: none; }
 .fc-day details > summary::-webkit-details-marker { display: none; }

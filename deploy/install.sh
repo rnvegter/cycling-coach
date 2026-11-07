@@ -136,10 +136,10 @@ systemctl start fietscoach-dagelijks.timer
 
 stap "Controle"
 for _ in $(seq 1 20); do
-  curl -fs -o /dev/null "http://127.0.0.1:$PORT/" && break
+  curl -fs -o /dev/null "http://127.0.0.1:$PORT/ready" && break
   sleep 1
 done
-curl -fsS -o /dev/null "http://127.0.0.1:$PORT/" || fout "de app reageert niet. Kijk met: journalctl -u fietscoach -n 50"
+curl -fsS -o /dev/null "http://127.0.0.1:$PORT/ready" || fout "de app reageert niet. Kijk met: journalctl -u fietscoach -n 50"
 
 ip=$(hostname -I 2>/dev/null | awk '{print $1}')
 cat <<EOF

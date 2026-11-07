@@ -32,12 +32,20 @@ class Stap:
     minuten: float
     pct: int | tuple[int, int]  # tuple = ramp van..tot
     rpm: int | None = None       # cadansdoel, bv. 65 voor krachtwerk of 110 voor spin-ups
+    vrij: bool = False           # ERG uit (intervals.icu 'freeride'); pct is dan alleen richtwaarde
+    cue: str | None = None       # aanwijzing op het scherm, bv. "Sprint"
 
     def tekst(self) -> str:
         cad = f" {self.rpm}rpm" if self.rpm else ""
+        cue = f"{self.cue} " if self.cue else ""
+        if self.vrij:
+            # Een trainer in ERG reageert een paar seconden te laat: bij blokken
+            # korter dan een minuut rijd je dan een groot deel op het verkeerde
+            # vermogen. Daarom ERG uit en zelf op gevoel/wattage rijden.
+            return f"- {cue}{fmt_duur(self.minuten)} freeride{cad}"
         if isinstance(self.pct, tuple):
-            return f"- {fmt_duur(self.minuten)} ramp {self.pct[0]}-{self.pct[1]}%{cad}"
-        return f"- {fmt_duur(self.minuten)} {self.pct}%{cad}"
+            return f"- {cue}{fmt_duur(self.minuten)} ramp {self.pct[0]}-{self.pct[1]}%{cad}"
+        return f"- {cue}{fmt_duur(self.minuten)} {self.pct}%{cad}"
 
 
 @dataclass
@@ -277,7 +285,7 @@ def zwo(t: Training) -> str:
     laatste = len(t.blokken) - 1
     for bi, b in enumerate(t.blokken):
         st = b.stappen
-        if b.herhalingen > 1 and len(st) == 2 and not any(isinstance(s.pct, tuple) or s.rpm for s in st):
+        if b.herhalingen > 1 and len(st) == 2 and not any(isinstance(s.pct, tuple) or s.rpm or s.vrij for s in st):
             regels.append(f'<IntervalsT Repeat="{b.herhalingen}" OnDuration="{round(st[0].minuten * 60)}" '
                           f'OffDuration="{round(st[1].minuten * 60)}" OnPower="{st[0].pct / 100:.2f}" '
                           f'OffPower="{st[1].pct / 100:.2f}"/>')
@@ -285,6 +293,9 @@ def zwo(t: Training) -> str:
         for _ in range(b.herhalingen):
             for si, s in enumerate(st):
                 sec = round(s.minuten * 60)
+                if s.vrij:
+                    regels.append(f'<FreeRide Duration="{sec}" FlatRoad="1"/>')
+                    continue
                 if isinstance(s.pct, tuple):
                     tag = ("Warmup" if bi == 0 and si == 0 else
                            "Cooldown" if bi == laatste and si == len(st) - 1 else "Ramp")

@@ -23,10 +23,15 @@ def main() -> None:
             print(service.sync(cfg))
     elif a.opdracht == "test":
         from .intervals import verbindingstest
-        ic = service.client(cfg)
-        if not ic:
-            raise SystemExit("Geen API-sleutel in de config.")
-        regels = verbindingstest(ic)
+        try:
+            ic = service.client(cfg)
+            if not ic:
+                raise SystemExit("Geen API-sleutel in de config.")
+            regels = verbindingstest(ic)
+        except SystemExit:
+            raise
+        except Exception as e:  # noqa: BLE001  bv. een onleesbaar certificaatbestand
+            regels = [(False, f"Kon geen verbinding opzetten: {e.__class__.__name__}: {e}")]
         for ok, r in regels:
             print(("✓ " if ok else "✗ ") + r)
         raise SystemExit(0 if all(ok for ok, _ in regels) else 1)

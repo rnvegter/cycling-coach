@@ -74,10 +74,10 @@ def ss_uitschieters(budget, p):
     def maak(blokken, lengte):
         bl = []
         for i in range(blokken):
-            bl.append(Blok(f"Sweetspot {i + 1}", [Stap(2.75, 90), Stap(0.25, 125)], lengte // 3))
+            bl.append(Blok(f"Sweetspot {i + 1}", [Stap(2.75, 90), Stap(0.25, 125, vrij=True, cue="Uitschieter")], lengte // 3))
             bl.append(Blok(None, [Stap(5, 55)]))
         return f"Sweetspot met uitschieters {blokken}×{lengte}m", bl, \
-            "Sweetspot met elke drie minuten een uitschieter van 15 seconden. Daarna meteen terug naar sweetspot: zo leer je herstellen onder belasting."
+            "Sweetspot met elke drie minuten een uitschieter van 15 seconden (ERG uit, rond 125%). Daarna meteen terug naar sweetspot: zo leer je herstellen onder belasting."
     return _sets(maak, budget, p, [(2, 12), (3, 12), (2, 15), (3, 15), (2, 18)])
 
 
@@ -150,10 +150,12 @@ def vo2_kort(werk_s: int, rust_s: int, pct: int, opties: list):
         def maak(sets, herh):
             bl = []
             for i in range(sets):
-                bl.append(Blok(f"Set {i + 1}", [Stap(werk_s / 60, pct), Stap(rust_s / 60, 50)], herh))
+                bl.append(Blok(f"Set {i + 1}", [Stap(werk_s / 60, pct, vrij=True, cue="Hard"),
+                                                Stap(rust_s / 60, 50, vrij=True, cue="Rustig")], herh))
                 bl.append(Blok(None, [Stap(5, 55)]))
-            return f"{werk_s}/{rust_s}'s {sets}×{herh}", bl, \
-                f"Korte blokken van {werk_s} seconden met {rust_s} seconden rust. Je hartslag blijft hoog en het wordt pas na een paar herhalingen echt zwaar."
+            return f"{werk_s}/{rust_s}'s {sets}×{herh}", bl, (
+                f"Korte blokken van {werk_s} seconden rond {pct}% FTP met {rust_s} seconden rustig trappen. "
+                f"De sets rijd je zonder ERG (op gevoel of wattage): de trainer is te traag voor zulke korte wissels.")
         return _sets(maak, budget, p, opties)
     return variant
 
@@ -197,8 +199,9 @@ def _duur_met(naam: str, blok: list[Stap], blokduur: float, toel: str, soort: st
 DUUR = [
     _duur_met("Duur met spin-ups", [Stap(9, 68), Stap(1, 65, 110)], 10,
               "Zone 2 met elke tien minuten een minuut hoge cadans (110+ rpm) zonder meer vermogen. Souplesse."),
-    _duur_met("Duur met sprints", [Stap(9 + 50 / 60, 68), Stap(10 / 60, 180)], 10,
-              "Zone 2 met elke tien minuten een sprint van 10 seconden. Zit of sta, maar vol gas."),
+    _duur_met("Duur met sprints", [Stap(9 + 50 / 60, 68), Stap(10 / 60, 180, vrij=True, cue="Sprint")], 10,
+              "Zone 2 met elke tien minuten een sprint van 10 seconden. Zit of sta, maar vol gas. "
+              "De sprint is zonder ERG, anders remt de trainer je af."),
     _duur_met("Duur met kracht", [Stap(10, 68), Stap(5, 75, 60)], 15,
               "Zone 2 met krachtblokjes van vijf minuten op 60 rpm. Rustig vermogen, zware versnelling."),
 ]

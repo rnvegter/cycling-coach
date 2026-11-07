@@ -53,7 +53,7 @@ def weekfasen(n: int, doel: str, focus: list[tuple[int, str]] | None = None) -> 
         factor = 0.65 if herstelweek else (0.9, 1.0, 1.1)[pos]
         if doel == "tocht" and i == n - 1:
             fase, factor, herstelweek = "taper", 0.6, False
-        meta.append({"fase": fase, "factor": factor, "herstel": herstelweek,
+        meta.append({"nr": i + 1, "fase": fase, "factor": factor, "herstel": herstelweek,
                      "blok": focus[i][0], "focus": focus[i][1]})
 
     # progressie (0..1) over de belastende weken: bij 'gemengd' per fase,
@@ -129,7 +129,10 @@ def _kies(rol: str, m: dict, doel: str, avail: int, nq: int, vk: dict) -> tuple[
     if rol.startswith("q"):
         k = int(rol[1:])
         if m["herstel"]:
-            if k == nq - 1 and vk.get("ftp_test", True):
+            # Een ramp-test elke herstelweek (4 weken) is te vaak: elke 8 weken is de
+            # standaard. 0 = nooit; vk['ftp_test'] = False werkt ook nog (oude config).
+            elke = int(vk.get("ftp_test_weken", 8)) if vk.get("ftp_test", True) else 0
+            if k == nq - 1 and elke and m["nr"] % elke == 0:
                 return "ftp_test", 40
             return "duur", _duur_min(avail, f)
         if m["fase"] == "taper":
