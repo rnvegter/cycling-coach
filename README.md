@@ -35,74 +35,51 @@ Elke ochtend om 05:30 en met de knop **Bijsturen**: ritten, wellness en weer ver
 
 ## Installatie
 
-De broncode staat in een privé GitHub-repo (`rnvegter/cycling-coach`). In de container komt een *deploy key* (alleen lezen), die je één keer in GitHub toevoegt (*Settings → Deploy keys*). Een token is niet nodig. Er zijn drie routes.
+Uitgangspunt: een **kale Debian 13-container** (LXC) die je zelf in Proxmox maakt. Het installatiescript doet de rest: pakketten, tijdzone, de code ophalen uit GitHub, Python, gebruiker, config en diensten.
 
-### A. Container maken, zelf clonen en installeren (aanrader)
+### 1. Container maken
 
-Op de Proxmox-host. Het script staat in de repo; kopieer het naar de host (bv. de *Raw*-weergave op GitHub in een bestand plakken):
-
-```
-bash lxc-maken.sh
-```
-
-Dit maakt een Debian 12-LXC (1 core, 512 MB, 4 GB, unprivileged, Europe/Amsterdam), installeert git, maakt de deploy key, wacht tot je die in GitHub hebt gezet en clonet de repo naar `/opt/fietscoach`. Daarna:
-
-```
-pct exec <CTID> -- bash /opt/fietscoach/deploy/install.sh
-```
-
-Instelbaar met omgevingsvariabelen, bv. een vast IP of Debian 13:
-
-```
-IP=192.168.0.217/24 GW=192.168.0.1 DEBIAN=13 bash lxc-maken.sh
-```
-
-Andere opties: `CTID`, `HOSTNAME_CT`, `STORAGE`, `BRIDGE`, `REPO`, `BRANCH`.
-
-### B. Met de Debian-container van de community scripts
-
-Op de Proxmox-host (kies bij de vragen 4 GB schijf):
+Met het community script, op de Proxmox-host:
 
 ```
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/ct/debian.sh)"
 ```
 
-Dan in de container (`pct enter <CTID>`), één voor één:
+Kies Debian 13, 1 core, 512 MB en **4 GB schijf** (de standaard van 2 GB is krap). Of via *Create CT* in Proxmox met het sjabloon `debian-13-standard`.
+
+Belangrijk: de container moet **unprivileged** zijn met **nesting aan** (*Options → Features → nesting*), anders draait systemd niet. Het script controleert dat en zegt het als het mis is.
+
+### 2. Het script in de container zetten
+
+De repo is privé, dus `curl` naar GitHub werkt niet zonder inloggen. Twee manieren:
+
+- **Plakken**: open `deploy/install.sh` op GitHub, klik *Raw*, kopieer alles. In de container:
+  ```
+  nano /root/install.sh
+  ```
+  Plakken, opslaan (Ctrl+O, Enter, Ctrl+X).
+- **Vanaf je computer via de host**: download het bestand en zet het met `scp` op de Proxmox-host. Dan, op de host:
+  ```
+  pct push <CTID> install.sh /root/install.sh
+  ```
+
+### 3. Installeren
+
+In de container (`pct enter <CTID>`):
 
 ```
-apt update
-```
-```
-apt install -y git openssh-client
-```
-```
-ssh-keygen -t ed25519 -N "" -f /root/.ssh/fietscoach_deploy
-```
-```
-cat /root/.ssh/fietscoach_deploy.pub
+bash /root/install.sh
 ```
 
-Zet die sleutel als deploy key in GitHub. Dan:
+Het script:
+1. controleert of het Debian is, of systemd draait en of er internet is;
+2. installeert `git`, `python3-venv`, `curl` en `tzdata`, en zet de tijdzone op Europe/Amsterdam;
+3. maakt een **deploy key** en laat die zien. Zet hem in GitHub bij *cycling-coach → Settings → Deploy keys → Add deploy key* (alleen lezen) en druk op Enter;
+4. haalt de code op naar `/opt/fietscoach` en installeert de Python-pakketten;
+5. vraagt je API-sleutel van intervals.icu (leeg laten mag; later in `/etc/fietscoach/config.yaml`);
+6. start de app en de ochtendtimer en controleert of alles reageert.
 
-```
-printf 'Host github-fietscoach\n  HostName github.com\n  User git\n  IdentityFile /root/.ssh/fietscoach_deploy\n  IdentitiesOnly yes\n' >> /root/.ssh/config
-```
-```
-git clone git@github-fietscoach:rnvegter/cycling-coach.git /opt/fietscoach
-```
-```
-bash /opt/fietscoach/deploy/install.sh
-```
-
-`install.sh` herkent de clone en de sleutel en zet de tijdzone zelf goed.
-
-### C. Alles in één keer
-
-`deploy/proxmox-create.sh` (samen met `install.sh` in één map op de host) maakt de container en installeert direct:
-
-```
-bash proxmox-create.sh
-```
+Opnieuw draaien is veilig: config, data en sleutel blijven staan. Daarna open je `http://<ip-van-de-container>:8766` en klik je in **Instellingen** eerst op **Verbinding testen**.
 
 ### Wat waar staat
 
@@ -143,6 +120,8 @@ Of vanaf de Proxmox-host:
 ```
 pct exec <CTID> -- fietscoach-update
 ```
+
+Een nieuwe versie van `install.sh` zelf hoef je niet opnieuw te kopiëren: na de eerste installatie staat hij in `/opt/fietscoach/deploy/` en komt hij mee met elke update.
 
 Het script laat zien welke commits er nieuw zijn en kopieert eerst je data en config naar `/var/backups/fietscoach`. Daarna zet het de nieuwe code neer, werkt pakketten en systemd-units bij en herstart de app. Reageert de nieuwe versie niet binnen 20 seconden op `/ready`, dan gaat hij automatisch terug naar de vorige versie en meldt het script een fout. Je data wordt daarbij niet aangeraakt.
 

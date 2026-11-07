@@ -9,6 +9,7 @@ Group=fietscoach
 WorkingDirectory=/opt/fietscoach
 EnvironmentFile=/etc/fietscoach/omgeving
 Environment=TZ=Europe/Amsterdam
+Environment=LANG=C.UTF-8
 Environment=FIETSCOACH_CONFIG=/etc/fietscoach/config.yaml
 Environment=FIETSCOACH_DATA=/var/lib/fietscoach
 ExecStart=/opt/fietscoach-venv/bin/uvicorn fietscoach.web:app --host 0.0.0.0 --port ${PORT} --proxy-headers
