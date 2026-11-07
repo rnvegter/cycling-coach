@@ -7,6 +7,24 @@
     <span class="wx-note" style="margin:0">Alleen lezen: atleet, wellness, ritten en kalender.</span>
   </form>
 </section>
+<section class="wx-card wx-card--flat t-cool">
+  <p class="wx-eyebrow">Berichten op je telefoon</p>
+  {% if kanalen %}
+  <form method="post" action="/berichten">
+    <label class="fc-check"><input type="checkbox" name="ochtend" value="1" {% if berichten_aan.ochtend %}checked{% endif %}>
+      Ochtendbericht (05:30, alleen op trainingsdagen)</label>
+    <label class="fc-check"><input type="checkbox" name="week" value="1" {% if berichten_aan.week %}checked{% endif %}>
+      Weekterugblik (zondag 20:00)</label>
+    <div class="wx-bar-row">
+      <button class="wx-btn">Opslaan</button>
+      <button class="wx-btn wx-btn--quiet" name="test" value="1">Testbericht sturen</button>
+      <span class="wx-note" style="margin:0">Via {{ kanalen|join(' en ') }}{% if status.bericht_ochtend %} · laatste {{ status.bericht_ochtend.tijd[8:10] }}-{{ status.bericht_ochtend.tijd[5:7] }} {{ status.bericht_ochtend.tijd[11:16] }} {{ '✓' if status.bericht_ochtend.ok else '✗' }}{% endif %}</span>
+    </div>
+  </form>
+  {% else %}
+  <p class="wx-note" style="margin:0">Nog geen kanaal ingesteld. Zet ntfy of Telegram onder <code>berichten:</code> in <code>/etc/fietscoach/config.yaml</code> (zie de README) en herstart de app.</p>
+  {% endif %}
+</section>
 {% set d = cfg.doel or {} %}
 {% set vk = cfg.voorkeuren or {} %}
 {% set w = cfg.weer or {} %}

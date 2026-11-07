@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 
-from . import planner, service, workouts
+from . import grafiek, inzicht, melding, planner, service, workouts
 
 HIER = Path(__file__).parent
 app = FastAPI(title="Fietscoach")
@@ -37,7 +37,7 @@ templates = Jinja2Templates(directory=HIER / "templates")
 
 DAGNAAM = {"ma": "Ma", "di": "Di", "wo": "Wo", "do": "Do", "vr": "Vr", "za": "Za", "zo": "Zo"}
 MAAND = ["jan", "feb", "mrt", "apr", "mei", "jun", "jul", "aug", "sep", "okt", "nov", "dec"]
-FOCUSNAAM = {"gemengd": "Gemengd", "sweetspot": "Sweetspot", "zone2": "Zone 2", "gepolariseerd": "Gepolariseerd"}
+FOCUSNAAM = planner.FOCUSNAAM
 
 
 def vandaag() -> date:  # los, zodat tests en schermafbeeldingen een dag kunnen kiezen
@@ -145,8 +145,17 @@ def scherm_vandaag(request: Request, msg: str | None = None):
         uitzonderingen=sorted((ctx["cfg"].get("uitzonderingen") or {}).items()),
         uitz=ctx["cfg"].get("uitzonderingen") or {},
         min_datum=v.isoformat(), max_datum=(v + timedelta(days=13)).isoformat(),
+        ftp_hint=inzicht.ftp_hint(ctx["status"]),
+        ftp_gezet=_recent(ctx["status"].get("ftp_gezet"), v, 3),
+        terugblik=service.weekoverzicht(v) if v.weekday() <= 1 else None,
     )
     return templates.TemplateResponse(request, "vandaag.html", ctx)
+
+
+def _recent(x: dict | None, v: date, dagen: int) -> dict | None:
+    if x and x.get("datum") and x["datum"] >= (v - timedelta(days=dagen)).isoformat():
+        return x
+    return None
 
 
 @app.get("/schema")
@@ -155,7 +164,11 @@ def scherm_schema(request: Request, msg: str | None = None):
     weken = [(wk, list(ss)) for wk, ss in groupby(ctx["plan"], key=lambda s: s["week"])]
     huidige = next((wk for wk, ss in weken if ss[-1]["datum"] >= ctx["vandaag"]), None)
     maxuren = max((sum(s.get("duur", 0) for s in ss) for _, ss in weken), default=1) or 1
-    ctx.update(weken=weken, huidige=huidige, maxuren=maxuren, rpe=service.laad_feedback()["rpe"])
+    doel = ctx["cfg"].get("doel") or {}
+    evenement = str(doel.get("evenement") or "") if doel.get("type") == "tocht" else None
+    reeks = inzicht.fitheidsverloop(ctx["status"], ctx["plan"], vandaag())
+    ctx.update(weken=weken, huidige=huidige, maxuren=maxuren, rpe=service.laad_feedback()["rpe"],
+               grafiek=grafiek.fitheid(reeks, vandaag(), evenement or None))
     return templates.TemplateResponse(request, "schema.html", ctx)
 
 
@@ -165,7 +178,8 @@ def scherm_instellingen(request: Request, msg: str | None = None):
     doel = ctx["cfg"].get("doel", {})
     blokken = list(doel.get("blokken") or [{"focus": doel.get("focus", "gemengd"), "weken": doel.get("weken", 12)}])
     blokken += [{"focus": "", "weken": ""}] * (3 - len(blokken))
-    ctx.update(blokken=blokken[:3], dagen=planner.DAGEN, focussen=planner.FOCUSSEN)
+    ctx.update(blokken=blokken[:3], dagen=planner.DAGEN, focussen=planner.FOCUSSEN,
+               kanalen=melding.kanalen(ctx["cfg"]), berichten_aan=service.berichten_aan(ctx["cfg"]))
     return templates.TemplateResponse(request, "instellingen.html", ctx)
 
 
@@ -408,6 +422,30 @@ def zwo(datum: str):
                     headers={"Content-Disposition": f'attachment; filename="{naam}"'})
 
 
+@app.post("/ftp")
+async def ftp(request: Request):
+    f = await request.form()
+    try:
+        tekst = service.zet_ftp(service.laad_config(), int(str(f.get("ftp") or "0")))
+    except ValueError as e:
+        return _terug("/", f"FTP niet aangepast: {e}")
+    except Exception as e:  # noqa: BLE001
+        return _terug("/", f"FTP niet aangepast: intervals.icu gaf een fout ({e.__class__.__name__}).")
+    return _terug("/", tekst)
+
+
+@app.post("/berichten")
+async def berichten(request: Request):
+    f = await request.form()
+    cfg = service.laad_config()
+    cfg["berichten_aan"] = {"ochtend": f.get("ochtend") == "1", "week": f.get("week") == "1"}
+    service.bewaar_instellingen(cfg)
+    if f.get("test") is not None:
+        uit = service.ochtendbericht(cfg, vandaag(), altijd=True)
+        return _terug("/instellingen", "Testbericht: " + uit)
+    return _terug("/instellingen", "Berichten opgeslagen.")
+
+
 @app.post("/verbinding")
 def verbinding(request: Request):
     from .intervals import verbindingstest
@@ -420,6 +458,13 @@ def verbinding(request: Request):
         regels = [(False, f"Kon geen verbinding opzetten: {e.__class__.__name__}")]
     tekst = " · ".join(("✓ " if ok else "✗ ") + r for ok, r in regels)
     return _terug("/instellingen", ("Verbinding in orde: " if all(ok for ok, _ in regels) else "Verbinding mislukt: ") + tekst)
+
+
+@app.get("/sw.js")
+def service_worker():
+    """Vanaf de root geserveerd, zodat hij voor de hele app geldt."""
+    return Response((HIER / "static" / "sw.js").read_bytes(), media_type="text/javascript",
+                    headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/ready")

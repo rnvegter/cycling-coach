@@ -31,8 +31,9 @@ HORIZON = 14  # dagen vooruit: bijsturen en naar intervals.icu
 # Eigen .zwo-workouts staan bij de data, niet in de repo. Een functie zodat
 # tests (en een andere FIETSCOACH_DATA) de map kunnen wisselen.
 eigen.map_bron = lambda: DATA / "workouts"
-INSTELBAAR = ("doel", "week", "voorkeuren", "weer", "uitzonderingen", "afwezig")
+INSTELBAAR = ("doel", "week", "voorkeuren", "weer", "uitzonderingen", "afwezig", "berichten_aan")
 WEER_GELDIG_UUR = 3     # zo lang gebruiken we een opgehaald weerbericht bij invoer in het scherm
+FITHEID_DAGEN = 90      # zo ver terug halen we fitheid en vermoeidheid op, voor de grafiek
 FROZEN_DAGEN = 21       # ouder dan dit: status uit het vorige plan (ritten halen we 28 dagen terug)
 
 
@@ -445,8 +446,12 @@ def bijsturen(cfg: dict, vandaag: date | None = None, ic: Intervals | None = Non
             try:
                 acts = ic.activiteiten(vandaag - timedelta(days=28), vandaag)
                 status["ritten"] = adapt.ritten_per_dag(acts)
-                well = ic.wellness(vandaag - timedelta(days=28), vandaag)
-                status["wellness"] = [{k: w.get(k) for k in ("id", "hrv", "restingHR")} for w in well]
+                well = ic.wellness(vandaag - timedelta(days=FITHEID_DAGEN), vandaag)
+                grens = (vandaag - timedelta(days=28)).isoformat()
+                status["wellness"] = [{k: w.get(k) for k in ("id", "hrv", "restingHR")}
+                                      for w in well if w.get("id", "") >= grens]
+                status["fitheid"] = [[w["id"], round(w["ctl"], 1), round(w["atl"], 1)]
+                                     for w in well if w.get("id") and w.get("ctl") is not None and w.get("atl") is not None]
                 met_ctl = [w for w in well if w.get("ctl") is not None]
                 if met_ctl:
                     laatste = met_ctl[-1]
@@ -623,6 +628,58 @@ def gezondheid(nu: datetime | None = None, max_uren: int = 36) -> tuple[bool, di
     return True, info
 
 
+# --- berichten -----------------------------------------------------------------------
+
+def berichten_aan(cfg: dict) -> dict:
+    return {"ochtend": True, "week": True} | (cfg.get("berichten_aan") or {})
+
+
+def _verstuur(cfg: dict, soort: str, titel: str, tekst: str, pad: str) -> str:
+    from . import melding
+    if not melding.kanalen(cfg):
+        return "Geen berichtkanaal ingesteld (ntfy of Telegram in config.yaml)."
+    uitslag = melding.stuur(cfg, titel, tekst, pad)
+    with vergrendeld():
+        st = laad_status()
+        st[f"bericht_{soort}"] = {"tijd": datetime.now().isoformat(timespec="seconds"),
+                                  "ok": all(ok for _, ok, _ in uitslag),
+                                  "uitslag": [f"{k}: {u}" for k, _, u in uitslag]}
+        _schrijf("status.json", st)
+    return " · ".join(f"{k} {'✓' if ok else '✗ ' + u}" for k, ok, u in uitslag)
+
+
+def ochtendbericht(cfg: dict, vandaag: date | None = None, altijd: bool = False) -> str:
+    """Na de ochtendronde: de training van vandaag. Op een rustdag geen bericht."""
+    from . import inzicht
+    if not altijd and not berichten_aan(cfg)["ochtend"]:
+        return "Ochtendbericht staat uit."
+    vandaag = vandaag or date.today()
+    inhoud = inzicht.ochtendtekst(laad_plan(), laad_status(), laad_feedback(), vandaag)
+    if not inhoud:
+        if not altijd:
+            return "Rustdag: geen ochtendbericht."
+        inhoud = ("Fietscoach: testbericht", "Vandaag geen training. Zo ziet een bericht eruit.")
+    return _verstuur(cfg, "ochtend", *inhoud, "/")
+
+
+def weekoverzicht(vandaag: date | None = None) -> dict:
+    """Terugblik op de week waarin `vandaag` valt (op maandag en dinsdag: de vorige week)."""
+    from . import inzicht
+    vandaag = vandaag or date.today()
+    maandag = vandaag - timedelta(days=vandaag.weekday())
+    if vandaag.weekday() <= 1:
+        maandag -= timedelta(days=7)
+    return inzicht.weekterugblik(laad_plan(), laad_status(), laad_feedback(), maandag)
+
+
+def weekbericht(cfg: dict, vandaag: date | None = None) -> str:
+    from . import inzicht
+    if not berichten_aan(cfg)["week"]:
+        return "Weekterugblik staat uit."
+    w = weekoverzicht(vandaag)
+    return _verstuur(cfg, "week", *inzicht.weektekst(w, planner.FOCUSNAAM), "/")
+
+
 # --- invoer vanuit het scherm ---------------------------------------------------
 
 @onder_slot
@@ -633,6 +690,23 @@ def zet_rpe(datum: str, rpe: int) -> None:
 
 
 @onder_slot
+@onder_slot
+def zet_ftp(cfg: dict, ftp: int, vandaag: date | None = None) -> str:
+    """Nieuwe FTP in intervals.icu zetten. Alle trainingen staan in % FTP, dus het schema
+    hoeft niet opnieuw; Zwift en je Wahoo rekenen met hun eigen FTP-instelling."""
+    if not 80 <= int(ftp) <= 600:
+        raise ValueError("FTP moet tussen 80 en 600 W liggen")
+    ic = client(cfg)
+    if not ic:
+        raise ValueError("geen intervals.icu-sleutel ingesteld")
+    ic.zet_ftp(int(ftp))
+    status = laad_status()
+    status["ftp_gezet"] = {"datum": (vandaag or date.today()).isoformat(), "van": status.get("ftp"), "naar": int(ftp)}
+    status["ftp"] = int(ftp)
+    _schrijf("status.json", status)
+    return f"FTP in intervals.icu op {int(ftp)} W gezet."
+
+
 @onder_slot
 def zet_ruil(datum: str, keuze: str | None) -> None:
     """Andere training voor een dag: 'v:3' of 'e:id' (zelfde soort), 's:duur' of

@@ -122,7 +122,7 @@ def test_hrv_en_ftp_voorstel_op_vandaag(web_cfg, monkeypatch):
     ic = RittenNep([_rit(test["datum"], 40, gepaard=True)], well)
     service.bijsturen(cfg, date(2027, 1, 7), ic, weer(date(2027, 1, 7)))
     html = TestClient(web.app).get("/").text
-    assert "Ramp-test gereden" in html and "281 W" in html
+    assert "FTP-test gereden" in html and "281 W" in html and "Zet FTP op 281 W" in html
     assert "HRV 39 (normaal 50)" in html and "minder hersteld" in html
 
 

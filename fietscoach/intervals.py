@@ -58,6 +58,13 @@ class Intervals:
         r.raise_for_status()
         return self._neem_op("upsert", r.json())
 
+    def zet_ftp(self, ftp: int) -> dict:
+        """FTP voor fietsen aanpassen (sport-settings op type 'Ride'). Roept bewust niet
+        /apply aan: oude ritten houden de FTP waarmee ze berekend zijn."""
+        r = self.c.put(f"/athlete/{self.aid}/sport-settings/Ride", json={"ftp": int(ftp)})
+        r.raise_for_status()
+        return r.json() if r.content else {}
+
     def verwijder_extern(self, external_ids: list[str]) -> int:
         """Verwijder events op ons eigen id; ids die niet bestaan worden genegeerd."""
         if not external_ids:

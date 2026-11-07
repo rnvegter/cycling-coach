@@ -1,0 +1,9 @@
+[Unit]
+Description=Fietscoach weekterugblik op zondagavond
+
+[Timer]
+OnCalendar=Sun *-*-* 20:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target

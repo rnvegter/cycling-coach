@@ -1,0 +1,80 @@
+{# Fitheid en vermoeidheid (boven) en vorm (onder, eigen as). Lijnen in SVG die
+   meeschaalt; tekst in HTML erover. Doorgetrokken = gemeten, gestippeld = voorspeld. #}
+{% macro fitheidsgrafiek(g) %}
+<section class="wx-card t-frozen fc-grafiekkaart" data-grafiek='{{ g.data|tojson }}'>
+  <div class="wx-card__head">
+    <p class="wx-eyebrow" style="margin:0">Fitheid en vorm</p>
+    <span class="wx-note" style="margin:0">gestippeld = als je het schema volgt</span>
+  </div>
+  <ul class="fc-legenda">
+    <li><i style="background:var(--chart-fit)"></i>Fitheid <b class="wx-num">{{ g.nu.fit|round|int }}</b></li>
+    <li><i style="background:var(--chart-moe)"></i>Vermoeidheid <b class="wx-num">{{ g.nu.moe|round|int }}</b></li>
+    <li><i style="background:var(--text-dim)"></i>Vorm <b class="wx-num">{{ '%+d'|format(g.nu.vorm|round|int) }}</b></li>
+  </ul>
+
+  <div class="fc-grafiek" role="img" aria-label="Fitheid {{ g.nu.fit|round|int }}, vermoeidheid {{ g.nu.moe|round|int }}; volgens het schema fitheid {{ g.eind.fit|round|int }} op {{ datumlabel(g.eind.datum) }}">
+    <div class="fc-plot">
+      {% for t in g.yticks %}<span class="fc-as" style="top:{{ t.y }}%">{{ t.tekst }}</span><i class="fc-raster" style="top:{{ t.y }}%"></i>{% endfor %}
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        {% if g.vandaag is not none %}<line x1="{{ g.vandaag }}" x2="{{ g.vandaag }}" y1="0" y2="100" class="fc-lijn-vandaag"/>{% endif %}
+        {% if g.evenement is not none %}<line x1="{{ g.evenement }}" x2="{{ g.evenement }}" y1="0" y2="100" class="fc-lijn-doel"/>{% endif %}
+        <polyline points="{{ g.moe.gemeten }}" class="fc-l fc-l--moe"/>
+        <polyline points="{{ g.moe.voorspeld }}" class="fc-l fc-l--moe fc-l--voorspeld"/>
+        <polyline points="{{ g.fit.gemeten }}" class="fc-l fc-l--fit"/>
+        <polyline points="{{ g.fit.voorspeld }}" class="fc-l fc-l--fit fc-l--voorspeld"/>
+        <line class="fc-kruis" x1="0" x2="0" y1="0" y2="100" visibility="hidden"/>
+      </svg>
+      {% if g.vandaag is not none %}<span class="fc-merk" style="left:{{ g.vandaag }}%">vandaag</span>{% endif %}
+      {% if g.evenement is not none %}<span class="fc-merk fc-merk--doel" style="left:{{ g.evenement }}%">tocht</span>{% endif %}
+      <span class="fc-eindlabel" style="top:{{ g.eind.y_fit }}%">{{ g.eind.fit|round|int }}</span>
+    </div>
+  </div>
+
+  <div class="fc-grafiek fc-grafiek--vorm">
+    <div class="fc-plot">
+      {% for t in g.vticks %}<span class="fc-as" style="top:{{ t.y }}%">{{ t.tekst }}</span><i class="fc-raster {% if t.tekst == '0' %}fc-raster--nul{% endif %}" style="top:{{ t.y }}%"></i>{% endfor %}
+      <span class="fc-band" style="top:2%">fris</span><span class="fc-band" style="bottom:2%">moe</span>
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        {% if g.vandaag is not none %}<line x1="{{ g.vandaag }}" x2="{{ g.vandaag }}" y1="0" y2="100" class="fc-lijn-vandaag"/>{% endif %}
+        {% if g.evenement is not none %}<line x1="{{ g.evenement }}" x2="{{ g.evenement }}" y1="0" y2="100" class="fc-lijn-doel"/>{% endif %}
+        <polyline points="{{ g.vorm.gemeten }}" class="fc-l fc-l--vorm"/>
+        <polyline points="{{ g.vorm.voorspeld }}" class="fc-l fc-l--vorm fc-l--voorspeld"/>
+        <line class="fc-kruis" x1="0" x2="0" y1="0" y2="100" visibility="hidden"/>
+      </svg>
+    </div>
+    <div class="fc-xas">{% for l in g.xlabels %}<span style="left:{{ l.x }}%">{{ l.tekst }}</span>{% endfor %}</div>
+  </div>
+  <div class="fc-tip" hidden></div>
+
+  <details class="wx-more"><summary>Als tabel</summary>
+    <table class="fc-tabel"><thead><tr><th>Datum</th><th>Fitheid</th><th>Vermoeid</th><th>Vorm</th><th></th></tr></thead>
+    <tbody>{% for r in g.data %}{% if loop.index0 % 7 == 0 or loop.last %}
+      <tr><td>{{ datumlabel(r[0]) }}</td><td>{{ r[1]|round|int }}</td><td>{{ r[2]|round|int }}</td><td>{{ '%+d'|format(r[3]|round|int) }}</td><td>{{ 'voorspeld' if r[5] else '' }}</td></tr>
+    {% endif %}{% endfor %}</tbody></table>
+  </details>
+</section>
+<script>
+(function () {
+  var kaart = document.currentScript.previousElementSibling;
+  var data = JSON.parse(kaart.dataset.grafiek), tip = kaart.querySelector('.fc-tip');
+  var plots = kaart.querySelectorAll('.fc-plot'), kruisen = kaart.querySelectorAll('.fc-kruis');
+  function dl(d) { var p = d.split('-'); return +p[2] + '-' + +p[1]; }
+  function toon(e) {
+    var r = plots[0].getBoundingClientRect();
+    var f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    var i = Math.round(f * (data.length - 1)), d = data[i], x = i / (data.length - 1) * 100;
+    kruisen.forEach(function (k) { k.setAttribute('x1', x); k.setAttribute('x2', x); k.setAttribute('visibility', 'visible'); });
+    tip.innerHTML = '<b>' + dl(d[0]) + (d[5] ? ' · voorspeld' : '') + '</b><br>Fitheid ' + Math.round(d[1]) +
+      ' · vermoeid ' + Math.round(d[2]) + ' · vorm ' + (d[3] > 0 ? '+' : '') + Math.round(d[3]) +
+      (d[4] !== null ? '<br>Belasting ' + d[4] + ' TSS' : '');
+    tip.hidden = false;
+    var k = kaart.getBoundingClientRect(), links = e.clientX - k.left;
+    tip.style.left = Math.min(Math.max(links - tip.offsetWidth / 2, 4), k.width - tip.offsetWidth - 4) + 'px';
+  }
+  function weg() { tip.hidden = true; kruisen.forEach(function (k) { k.setAttribute('visibility', 'hidden'); }); }
+  kaart.querySelectorAll('.fc-grafiek').forEach(function (g) {
+    g.addEventListener('pointermove', toon); g.addEventListener('pointerdown', toon); g.addEventListener('pointerleave', weg);
+  });
+})();
+</script>
+{% endmacro %}

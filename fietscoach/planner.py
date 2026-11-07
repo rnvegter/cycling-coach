@@ -159,6 +159,8 @@ def _kies(rol: str, m: dict, doel: str, avail: int, nq: int, vk: dict) -> tuple[
 
 
 # Doelzwaarte per soort aan het begin en eind van een blok (zie workouts.zwaarte).
+FOCUSNAAM = {"gemengd": "Gemengd", "sweetspot": "Sweetspot", "zone2": "Zone 2", "gepolariseerd": "Gepolariseerd"}
+
 DOELZWAARTE = {"tempo": (3, 3), "sweetspot": (3, 4), "drempel": (4, 5), "vo2max": (4, 5)}
 
 

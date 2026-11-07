@@ -11,11 +11,16 @@
   <div class="fc-tile {% if status.vorm is defined and status.vorm is not none and status.vorm < -20 %}fc-tile--neg{% endif %}">
     <b>{{ '%+d'|format(status.vorm) if status.vorm is defined and status.vorm is not none else '–' }}</b><span>Vorm</span></div>
 </div>
-{% if ftp_test_gedaan and status.eftp %}
-<p class="wx-status t-baking">Ramp-test gereden op {{ datumlabel(ftp_test_gedaan.datum, true) }}. intervals.icu schat je FTP nu op <b class="wx-num">{{ status.eftp }} W</b>{% if status.ftp %} (ingesteld: {{ status.ftp }} W){% endif %}.
-  Neem de nieuwe waarde over in <a href="https://intervals.icu/settings" target="_blank" rel="noopener" style="color:inherit">intervals.icu → Settings</a>; alle trainingen schuiven mee.</p>
-{% elif status.eftp and status.ftp and status.eftp > status.ftp * 1.03 %}
-<p class="wx-status t-warm">Je eFTP ({{ status.eftp }} W) ligt duidelijk boven je FTP ({{ status.ftp }} W). Overweeg je FTP in intervals.icu op te hogen.</p>
+{% macro ftpknop(w, label) %}<form method="post" action="/ftp" style="display:inline">
+  <input type="hidden" name="ftp" value="{{ w }}"><button class="wx-btn wx-btn--quiet" style="min-height:32px;padding:0 var(--sp-2);margin-top:var(--sp-1)">{{ label }}</button></form>{% endmacro %}
+{% if ftp_gezet %}
+<div class="wx-status t-cool">FTP in intervals.icu op <b class="wx-num">{{ ftp_gezet.naar }} W</b> gezet{% if ftp_gezet.van %} (was {{ ftp_gezet.van }} W){% endif %}. Zet hem in Zwift en op je Wahoo ook op {{ ftp_gezet.naar }} W: die rekenen met hun eigen instelling.</div>
+{% elif ftp_test_gedaan and status.eftp %}
+<div class="wx-status t-baking">FTP-test gereden op {{ datumlabel(ftp_test_gedaan.datum, true) }}. intervals.icu schat je FTP nu op <b class="wx-num">{{ status.eftp }} W</b>{% if status.ftp %} (ingesteld: {{ status.ftp }} W){% endif %}.
+  Alle trainingen staan in % FTP en schuiven mee.<br>{{ ftpknop(status.eftp, 'Zet FTP op ' ~ status.eftp ~ ' W') }}</div>
+{% elif ftp_hint %}
+<div class="wx-status {{ 't-warm' if ftp_hint.richting == 'hoger' else 't-cold' }}">{{ ftp_hint.tekst }}
+  {% if ftp_hint.richting == 'hoger' %}<br>{{ ftpknop(ftp_hint.waarde, 'Zet FTP op ' ~ ftp_hint.waarde ~ ' W') }}{% endif %}</div>
 {% endif %}
 
 {# --- Readiness, zoals JOIN: hoe voel je je vandaag? ------------------- #}
@@ -136,6 +141,22 @@
 {% endif %}
 
 {# --- Deze week ------------------------------------------------------- #}
+{% if terugblik and terugblik.gepland %}
+{% set w = terugblik %}
+<section class="wx-card t-cool">
+  <p class="wx-eyebrow">Vorige week · {{ datumlabel(w.van) }} – {{ datumlabel(w.tot) }}</p>
+  <h2 class="wx-heading">{{ w.oordeel }}</h2>
+  <div class="fc-tiles fc-tiles--4">
+    <div class="fc-tile"><b>{{ (w.minuten_gereden / 60)|round(1) }}<small>/{{ (w.minuten_gepland / 60)|round(1) }}</small></b><span>Uren</span></div>
+    <div class="fc-tile"><b>{{ w.tss_gereden }}<small>/{{ w.tss_gepland }}</small></b><span>TSS</span></div>
+    <div class="fc-tile"><b>{{ w.rpe if w.rpe is not none else '–' }}</b><span>RPE</span></div>
+    <div class="fc-tile"><b>{{ '%+d'|format(w.fit_verschil) if w.fit_verschil is not none else '–' }}</b><span>Fitheid</span></div>
+  </div>
+  {% if w.gemist %}<p class="wx-note">Gemist: {{ w.gemist|join(', ') }}.</p>{% endif %}
+  {% if w.volgende %}<p class="wx-note" style="margin-bottom:0">Deze week: {{ 'herstelweek' if w.volgende.herstel else focusnaam.get(w.volgende.focus, w.volgende.fase)|lower }}, {{ w.volgende.trainingen }} trainingen, {{ (w.volgende.minuten / 60)|round(1) }} uur. Zwaarste: {{ w.volgende.zwaarste }} ({{ datumlabel(w.volgende.zwaarste_dag) }}).</p>{% endif %}
+</section>
+{% endif %}
+
 <section class="wx-card wx-card--flat fc-plain">
   <div class="wx-card__head"><h2 class="wx-heading" style="margin:0">Deze week</h2>
     {% if deze_week %}<span class="wx-eyebrow" style="margin:0">{{ focusnaam.get(deze_week[0].focus, deze_week[0].fase) }}{% if deze_week[0].herstelweek %} · herstelweek{% endif %}</span>{% endif %}</div>

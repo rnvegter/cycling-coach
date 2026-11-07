@@ -8,7 +8,7 @@ Werkt zoals JOIN, maar draait op je eigen server en ziet eruit als cwem (zelfde 
 
 **Vier schermen**
 - **Vandaag**: FTP, eFTP, fitheid, vermoeidheid en vorm; readiness invullen; de training van vandaag met profielgrafiek, weer, voedingsadvies en aanpassingen; een andere training kiezen; openstaande feedback (RPE); deze week; een andere tijd op een dag.
-- **Schema**: alle weken met focus, uren, TSS gepland en gereden, en per training de opbouw en (na het rijden) de score.
+- **Schema**: een grafiek van fitheid, vermoeidheid en vorm (de afgelopen zes weken gemeten, daarna voorspeld als je het schema volgt, met je tocht als die er is); alle weken met focus, uren, TSS gepland en gereden, en per training de opbouw en (na het rijden) de score.
 - **Bibliotheek**: alle 34 trainingsvormen met profiel, uitleg en een **zwaarte van 1 tot 5**, te bekijken op 45, 60 of 90 minuten. De zwaarte volgt uit de intensiteit (IF, genormaliseerd vermogen per seconde met een 30 s-gemiddelde, zodat korte sprints niet overdrijven): < 0,60 = 1, < 0,72 = 2, < 0,82 = 3, < 0,87 = 4, daarboven 5. Lange ritten tellen zwaarder: TSS ≥ 100 minstens 3, ≥ 180 minstens 4. Daaronder protocollen uit gepubliceerd onderzoek, met bron: 30/15's (Rønnestad 2015/2020), 4×8 en 4×16 (Seiler 2013), 4×4 (Helgerud 2007), sprintintervallen 4–6×30 s (Burgomaster/Gibala 2005), Tabata (1996) en de 20-minutentest (Allen & Coggan).
 - **Instellingen**: doel (FTP, duur of een tocht met datum), focusblokken, je gewone week, voorkeuren en weergrenzen. Opslaan bouwt het schema vanaf vandaag opnieuw op; het verleden blijft staan.
 
@@ -29,7 +29,8 @@ Werkt zoals JOIN, maar draait op je eigen server en ziet eruit als cwem (zelfde 
 - **Vorm** (fitheid − vermoeidheid) onder −20 of −30 → de komende week korter.
 - **Weer per rit** (Open-Meteo, uurverwachting): alleen de uren waarin je rijdt tellen (starttijd per buitendag in Instellingen, standaard 09:30 in het weekend en 18:30 doordeweeks). Regen, harde wind of vorst in dát tijdvak → naar Zwift; de lange rit eerst naar een droge dag, beoordeeld over zijn eigen duur. Bij buitenritten een link naar cwem voor kledingadvies (`cwem_url` in `config.yaml`).
 - **Trainingsscore** na elke rit: duur en intensiteit (gepland tegenover gereden), elk 0–100.
-- **eFTP** uit intervals.icu, met een seintje als die duidelijk boven je FTP ligt.
+- **eFTP** uit intervals.icu, met een seintje als die duidelijk boven (> 3%) of ruim onder (> 8%) je FTP ligt. Na een FTP-test of bij een hogere eFTP zet je met één knop de nieuwe FTP in intervals.icu. Oude ritten houden hun FTP. Zwift en je Wahoo rekenen met hun eigen FTP: pas die zelf aan, de app herinnert je eraan.
+- **Weekterugblik**: op maandag en dinsdag op Vandaag, en zondag om 20:00 als bericht: gereden tegenover gepland (uren, TSS), gemiddelde RPE, verandering in fitheid en wat de komende week brengt.
 - **.zwo-download** per training, als reserve voor Zwift.
 
 Elke ochtend om 05:30 en met de knop **Bijsturen**: ritten, wellness en weer vers ophalen, bijsturen en de komende 14 dagen naar intervals.icu (type *Ride* = buiten/Wahoo, *VirtualRide* = Zwift). Na invoer in het scherm (RPE, readiness, duur, afwezigheid) is het schema direct bijgewerkt met de laatst opgehaalde gegevens; de sync naar intervals.icu gaat dan op de achtergrond.
@@ -141,6 +142,27 @@ Workouts die je zelf hebt, bijvoorbeeld geëxporteerd uit Zwift of een andere ap
 Elk bestand wordt gecontroleerd (geldige fietsworkout, geen XML-entities, max. 256 kB; een zip max. 1000 workouts en 64 MB uitgepakt). Dezelfde bestandsnaam opnieuw = bijwerken. De workout wordt automatisch ingedeeld op de tijd in elke zone: minstens 5 min boven 105% = VO2max, 10 min 95–105% = drempel, 10 min 88–95% = sweetspot, 15 min 76–88% = tempo, anders duur. Je eigen workouts staan ook bij hun soort in de bibliotheek (gemarkeerd als *eigen*). Per workout kun je de soort zelf kiezen (✎ = zelf gekozen); de knop **Alles automatisch indelen** past de regels opnieuw toe op alle eigen workouts en zet je eigen keuzes terug. In het schema doet een workout mee in de afwisseling van zijn soort, maar alleen op dagen waar hij past: niet langer dan je beschikbare tijd (+5 min) en niet korter dan 60% ervan.
 
 De bestanden staan in `/var/lib/fietscoach/workouts`, bij je data en dus ook in de back-ups, maar **niet in de repo**: het zijn jouw bestanden, en zo verspreid je ze niet mee als de repo ooit openbaar wordt.
+
+## Berichten op je telefoon
+
+Elke ochtend na de ochtendronde (alleen op trainingsdagen) een bericht met de training, binnen of buiten, het weer in je rijtijd, wat er is bijgestuurd en voedingsadvies. Op zondag om 20:00 de weekterugblik. Tik op het bericht en de app opent.
+
+Twee kanalen, kies er een of beide en zet ze in `/etc/fietscoach/config.yaml` onder `berichten:` (zie `config.example.yaml`):
+
+- **ntfy**: installeer de ntfy-app, abonneer op een eigen, onraadbaar topic (bv. `fietscoach-8f3k2m9x`) en zet dat topic in de config. Met ntfy.sh is iedereen die het topic kent mee te lezen; wil je dat niet, gebruik dan een eigen ntfy-server met een token (kan in een eigen LXC).
+- **Telegram**: maak een bot via @BotFather, stuur hem een bericht, en zoek je chat-id op via `https://api.telegram.org/bot<token>/getUpdates`.
+
+Zet ook `app_url` op het adres van de app. Herstart daarna:
+
+```
+systemctl restart fietscoach
+```
+
+In **Instellingen → Berichten** zet je het ochtendbericht en de weekterugblik aan of uit en stuur je een testbericht.
+
+## Als app op je telefoon
+
+Open de app in Safari (iPhone: *Deel → Zet op beginscherm*) of Chrome (Android: *menu → App installeren*). Je krijgt een eigen icoon en een scherm zonder adresbalk. Zonder verbinding zie je de laatst geladen versie van elk scherm, met een melding; wijzigen kan dan niet. Dit werkt alleen via https (achter Caddy), niet via `http://<ip>:8766`.
 
 ## Verbinding met intervals.icu testen
 

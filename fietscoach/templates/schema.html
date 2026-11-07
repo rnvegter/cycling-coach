@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_dag.html" import dag, waaromlijst with context %}
+{% from "_grafiek.html" import fitheidsgrafiek with context %}
 {% block inhoud %}
 {% if not weken %}
 <div class="wx-card t-mild"><h2 class="wx-heading">Nog geen schema</h2>
@@ -8,6 +9,7 @@
 <p class="wx-eyebrow">{{ cfg.doel.type|upper }} · {% for b in cfg.doel.blokken or [] %}{{ focusnaam.get(b.focus, b.focus) }} {{ b.weken }} wk{% if not loop.last %} → {% endif %}{% else %}{{ focusnaam.get(cfg.doel.focus, 'Gemengd') }}{% endfor %}{% if cfg.doel.evenement %} · tocht {{ datumlabel(cfg.doel.evenement|string, true) }}{% endif %}</p>
 <div class="fc-legend">{% for k, n in zonelegenda %}<span class="t-{{ k }}"><i></i>{{ n }}</span>{% endfor %}</div>
 <div class="wx-strip" style="margin-bottom:var(--sp-5)"></div>
+{% if grafiek %}{{ fitheidsgrafiek(grafiek) }}{% endif %}
 
 {% for wk, ss in weken %}
 {% set uren = (ss|sum(attribute='duur')) %}

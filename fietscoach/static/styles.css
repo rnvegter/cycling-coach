@@ -269,6 +269,7 @@ input[type="date"].wx-input { min-width: 0; max-width: 100%; }
 /* Tegels: de vijf getallen uit intervals.icu. */
 .fc-tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--line);
             border: 1px solid var(--line); margin-bottom: var(--sp-4); }
+.fc-tiles--4 { grid-template-columns: repeat(4, 1fr); }
 .fc-tile { background: var(--surface); padding: var(--sp-2) var(--sp-1); text-align: center; }
 .fc-tile b { display: block; font-family: var(--data); font-weight: 600; font-size: var(--step-1);
              font-variant-numeric: tabular-nums; }
@@ -410,3 +411,42 @@ details.fc-wk > .fc-week { padding: 0 var(--sp-4) var(--sp-2); }
                    letter-spacing: .08em; color: var(--text-dim); padding-bottom: var(--sp-2); margin-top: calc(-1 * var(--sp-2)); }
 .fc-slide__start .wx-input { width: 7rem; min-height: 36px; }
 .fc-weektotaal { margin: var(--sp-3) 0 0; text-align: right; }
+
+/* --- Fitheidsgrafiek ------------------------------------------------------------
+   Kleuren gecontroleerd op kleurenblindheid en contrast (licht en donker). */
+:root, [data-theme="dark"] { --chart-fit: #5C9ACF; --chart-moe: #D96B3E; }
+@media (prefers-color-scheme: light) { :root:not([data-theme]) { --chart-fit: #2E6C9E; --chart-moe: #9B5900; } }
+[data-theme="light"] { --chart-fit: #2E6C9E; --chart-moe: #9B5900; }
+
+.fc-grafiekkaart { position: relative; }
+.fc-legenda { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); list-style: none; margin: var(--sp-2) 0 var(--sp-3); padding: 0;
+  font-size: var(--step--1); color: var(--text-dim); }
+.fc-legenda i { display: inline-block; width: 12px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+.fc-legenda b { color: var(--text); margin-left: 4px; }
+.fc-grafiek { position: relative; height: 170px; touch-action: pan-y; }
+.fc-grafiek--vorm { height: 96px; margin-top: var(--sp-2); padding-bottom: 1.3rem; }
+.fc-plot { position: absolute; left: 2.2rem; right: 1.8rem; top: 0.4rem; bottom: 0.4rem; }
+.fc-grafiek--vorm .fc-plot { bottom: 1.7rem; }
+.fc-plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.fc-as { position: absolute; right: calc(100% + 6px); transform: translateY(-50%); font: var(--step--2) var(--data); color: var(--text-dim); }
+.fc-raster { position: absolute; left: 0; right: 0; border-top: 1px solid var(--line); opacity: .6; }
+.fc-raster--nul { opacity: 1; border-top-color: var(--text-dim); }
+.fc-l { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
+.fc-l--fit { stroke: var(--chart-fit); }
+.fc-l--moe { stroke: var(--chart-moe); }
+.fc-l--vorm { stroke: var(--text-dim); }
+.fc-l--voorspeld { stroke-dasharray: 4 4; }
+.fc-lijn-vandaag, .fc-lijn-doel, .fc-kruis { stroke: var(--text-dim); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.fc-lijn-doel { stroke: var(--signal); stroke-dasharray: 2 3; }
+.fc-kruis { stroke: var(--text); opacity: .5; }
+.fc-merk { position: absolute; top: -0.3rem; transform: translateX(4px); font: var(--step--2) var(--body); color: var(--text-dim); }
+.fc-merk--doel { color: var(--signal); }
+.fc-eindlabel { position: absolute; left: calc(100% + 4px); transform: translateY(-50%); font: var(--step--2) var(--data); color: var(--text-dim); }
+.fc-band { position: absolute; right: 2px; font: var(--step--3) var(--body); color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em; }
+.fc-xas { position: absolute; left: 2.2rem; right: 1.8rem; bottom: 0; height: 1.2rem; }
+.fc-xas span { position: absolute; transform: translateX(-50%); font: var(--step--2) var(--body); color: var(--text-dim); }
+.fc-tip { position: absolute; top: 3.4rem; z-index: 2; padding: var(--sp-1) var(--sp-2); background: var(--surface-2);
+  border: 1px solid var(--line); border-radius: var(--radius); font: var(--step--1) var(--body); color: var(--text); pointer-events: none; white-space: nowrap; }
+.fc-tabel { width: 100%; border-collapse: collapse; font: var(--step--1) var(--data); }
+.fc-tabel th, .fc-tabel td { text-align: right; padding: 2px 6px; border-bottom: 1px solid var(--line); }
+.fc-tabel th:first-child, .fc-tabel td:first-child { text-align: left; }

@@ -120,6 +120,8 @@ class NepServer:
         if pad.endswith("/events/bulk"):
             assert req.url.params["upsert"] == "true"
             return httpx.Response(200, json=[{"id": 1} for _ in _json.loads(req.content)])
+        if pad.endswith("/sport-settings/Ride") and req.method == "PUT":
+            return httpx.Response(200, json={"id": 7, "types": ["Ride"], **_json.loads(req.content)})
         if pad.endswith("/events/bulk-delete") and req.method == "PUT":
             return httpx.Response(200, json=len(_json.loads(req.content)))
         return httpx.Response(404)

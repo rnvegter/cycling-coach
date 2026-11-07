@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Fietscoach</title>
 <meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0E1A24">
+<link rel="manifest" href="/static/manifest.webmanifest" crossorigin="use-credentials">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Fietscoach">
 <link rel="stylesheet" href="/static/fonts/fonts.css">
 <link rel="stylesheet" href="/static/styles.css">
 {# Het merk: dezelfde zeven banden als het cwem-logo, maar als oplopende
@@ -35,6 +40,7 @@
   <a class="wx-tab" href="/instellingen" {% if tab == 'instellingen' %}aria-current="page"{% endif %}>Instellingen</a>
 </nav>
 
+<p class="wx-status t-frozen fc-offline" hidden>Geen verbinding: je ziet de laatst geladen versie. Wijzigen kan pas weer met verbinding.</p>
 {% if msg %}<p class="wx-status {% if 'mislukt' in msg or 'Niet ' in msg or 'Kon ' in msg or '✗' in msg %}wx-status--err{% else %}t-cool{% endif %}">{{ msg }}</p>{% endif %}
 
 {% block inhoud %}{% endblock %}
@@ -45,5 +51,13 @@
   · weer via Open-Meteo
 </footer>
 </div>
+<script>
+(function () {
+  var b = document.querySelector('.fc-offline');
+  function zet() { b.hidden = navigator.onLine; }
+  addEventListener('online', zet); addEventListener('offline', zet); zet();
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
+})();
+</script>
 </body>
 </html>

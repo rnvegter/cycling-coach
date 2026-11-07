@@ -1,4 +1,4 @@
-"""Opdrachtregel: python -m fietscoach.cli [genereer|bijsturen|sync|dagelijks|toon|test|rooktest|importeer]"""
+"""Opdrachtregel: python -m fietscoach.cli [genereer|bijsturen|sync|dagelijks|toon|test|rooktest|importeer|ochtendbericht|weekterugblik]"""
 from __future__ import annotations
 
 import argparse
@@ -40,7 +40,7 @@ def importeer(paden: list[str]) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(prog="fietscoach")
     ap.add_argument("opdracht", choices=["genereer", "bijsturen", "sync", "dagelijks", "toon", "test",
-                                         "rooktest", "importeer"])
+                                         "rooktest", "importeer", "ochtendbericht", "weekterugblik"])
     ap.add_argument("--opname", help="bij rooktest: map waarin de antwoorden (zonder persoonsgegevens) komen")
     ap.add_argument("--start", help="startdatum JJJJ-MM-DD (bij genereer)")
     ap.add_argument("paden", nargs="*", help="bij importeer: .zwo-bestanden, .zip-bestanden of mappen")
@@ -54,6 +54,16 @@ def main() -> None:
             print(regel)
         if a.opdracht == "dagelijks":
             print(service.sync(cfg))
+            try:
+                print(service.ochtendbericht(cfg))
+            except Exception as e:  # noqa: BLE001  een bericht mag de ochtendronde niet breken
+                print(f"Ochtendbericht mislukt: {e}")
+    elif a.opdracht == "ochtendbericht":
+        print(service.ochtendbericht(cfg, altijd=True))
+    elif a.opdracht == "weekterugblik":
+        for regel in service.bijsturen(cfg):  # ritten van vandaag nog meenemen
+            print(regel)
+        print(service.weekbericht(cfg))
     elif a.opdracht == "importeer":
         importeer(a.paden)
         print(service.pas_toe_snel(cfg) or "Schema bijgewerkt.")
