@@ -6,7 +6,7 @@
 # Instelbaar met omgevingsvariabelen (standaard tussen haakjes):
 #   CTID (eerstvolgende vrije)  HOSTNAME_CT (fietscoach)  STORAGE (local-lvm)
 #   BRIDGE (vmbr0)  IP (dhcp, of bv. 192.168.0.217/24)  GW (alleen bij vast IP)
-#   REPO (https://github.com/rnvegter/fietscoach.git)  BRANCH (main)
+#   REPO (https://github.com/rnvegter/cycling-coach.git)  BRANCH (main)
 #   INTERVALS_API_KEY (wordt anders gevraagd)
 #
 # Klein: 1 core, 512 MB, 4 GB. Unprivileged, met nesting (nodig voor systemd).
@@ -18,7 +18,7 @@ STORAGE="${STORAGE:-local-lvm}"
 BRIDGE="${BRIDGE:-vmbr0}"
 IP="${IP:-dhcp}"
 GW="${GW:-}"
-REPO="${REPO:-https://github.com/rnvegter/fietscoach.git}"
+REPO="${REPO:-https://github.com/rnvegter/cycling-coach.git}"
 BRANCH="${BRANCH:-main}"
 HIER="$(cd "$(dirname "$0")" && pwd)"
 

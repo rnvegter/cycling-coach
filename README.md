@@ -30,7 +30,7 @@ Elke ochtend om 05:30 en na elke invoer in het scherm: bijsturen en de komende 1
 
 ## Installatie
 
-De broncode staat in een eigen GitHub-repo (standaard `rnvegter/fietscoach`). Is die privé, dan maakt het installatiescript een *deploy key* (alleen lezen) en vraagt je die één keer in GitHub toe te voegen. Een token is niet nodig.
+De broncode staat in een eigen GitHub-repo (standaard `rnvegter/cycling-coach`). Is die privé, dan maakt het installatiescript een *deploy key* (alleen lezen) en vraagt je die één keer in GitHub toe te voegen. Een token is niet nodig.
 
 ### Snelste weg: alles vanaf de Proxmox-host
 

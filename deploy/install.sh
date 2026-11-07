@@ -4,7 +4,7 @@
 #   bash install.sh
 #
 # Of zonder vragen, bv. vanuit proxmox-create.sh:
-#   REPO=https://github.com/rnvegter/fietscoach.git INTERVALS_API_KEY=xxx bash install.sh
+#   REPO=https://github.com/rnvegter/cycling-coach.git INTERVALS_API_KEY=xxx bash install.sh
 #
 # Indeling (zoals cwem: code alleen-lezen, data apart):
 #   /opt/fietscoach            broncode (git checkout, eigendom van root)
@@ -14,7 +14,7 @@
 #   /var/backups/fietscoach    kopie van de data vóór elke update
 set -euo pipefail
 
-REPO="${REPO:-https://github.com/rnvegter/fietscoach.git}"
+REPO="${REPO:-https://github.com/rnvegter/cycling-coach.git}"
 BRANCH="${BRANCH:-main}"
 PORT="${PORT:-8766}"
 CODE=/opt/fietscoach
