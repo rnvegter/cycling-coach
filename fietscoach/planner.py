@@ -189,6 +189,8 @@ def genereer(cfg: dict, start: date) -> list[dict]:
                 "buiten_toegestaan": bool(week[dag].get("buiten", False)),
                 "status": "gepland", "notities": [],
             }
+            if soort == "ftp_test":  # testen vergelijk je alleen in dezelfde vorm
+                s["variant"] = 1 if vk.get("ftp_test_vorm") == "20min" else 0
             s["omgeving"] = standaard_omgeving(s, vk)
             plan.append(vul_in(s))
     return plan

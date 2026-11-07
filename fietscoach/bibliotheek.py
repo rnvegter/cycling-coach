@@ -145,6 +145,80 @@ def drempel_harde_start(budget, p):
 
 # --- VO2max ------------------------------------------------------------------------
 
+def vo2_ronnestad(budget, p):
+    """3 sets van 13×(30 s / 15 s), 3 min tussen de sets; herstel op de helft van het
+    werkvermogen. Rønnestad e.a., Scand J Med Sci Sports 2015 en 2020."""
+    def maak(sets, herh):
+        bl = []
+        for i in range(sets):
+            bl.append(Blok(f"Set {i + 1}", [Stap(0.5, 120, vrij=True, cue="Hard"),
+                                            Stap(0.25, 60, vrij=True, cue="Rustig")], herh))
+            if i < sets - 1:
+                bl.append(Blok(None, [Stap(3, 50)]))
+        return f"30/15's Rønnestad {sets}×{herh}", bl, (
+            "Korte blokken van 30 seconden zo hard als je de hele set volhoudt, met 15 seconden op ongeveer "
+            "de helft van dat vermogen; 3 minuten rustig tussen de sets. Zonder ERG. "
+            "Naar Rønnestad e.a. (Scand J Med Sci Sports, 2015 en 2020): bij getrainde en profrenners gaf "
+            "dit meer winst dan even zware blokken van 5 minuten.")
+    return _sets(maak, budget, p, [(2, 11), (2, 13), (3, 11), (3, 13)])
+
+
+def vo2_helgerud(budget, p):
+    """4×4 min op 90–95% HRmax, 3 min actief herstel. Helgerud e.a., Med Sci Sports Exerc 2007."""
+    def maak(herh):
+        return f"4×4 Helgerud ({herh}×4m)", [Blok("Hoofdblok", [Stap(4, 110), Stap(3, 55)], herh)], (
+            "Blokken van 4 minuten waarin je hartslag naar 90–95% van je maximum gaat, met 3 minuten "
+            "rustig trappen. Naar Helgerud e.a. (Med Sci Sports Exerc, 2007), het 'Noorse 4×4'. "
+            "Het wattage is een richtwaarde: rijd je op hartslag, laat het eerste blok dan wat oplopen.")
+    return _sets(maak, budget, p, [(3,), (4,)])
+
+
+def vo2_seiler_8(budget, p):
+    """4×8 min met 2 min herstel, op het hoogste vermogen dat je de hele sessie volhoudt
+    (~106% van 40-min tijdritvermogen). Seiler e.a., Scand J Med Sci Sports 2013."""
+    def maak(herh):
+        return f"Seiler {herh}×8m", [Blok("Hoofdblok", [Stap(8, 105), Stap(2, 55)], herh)], (
+            "Blokken van 8 minuten op het hoogste vermogen dat je alle blokken kunt volhouden, met maar "
+            "2 minuten herstel. Naar Seiler e.a. (Scand J Med Sci Sports, 2013): 4×8 gaf meer winst dan "
+            "4×4 of 4×16. Begin met 3×8; heb je meer rust nodig, neem 3 minuten.")
+    return _sets(maak, budget, p, [(3,), (4,)])
+
+
+def vo2_sit(budget, p):
+    """4–6×30 s voluit met 4 min herstel. Burgomaster e.a., J Appl Physiol 2005; Gibala e.a. 2006."""
+    def maak(herh):
+        return f"Sprintintervallen {herh}×30s", \
+            [Blok("Sprint", [Stap(0.5, 200, vrij=True, cue="Voluit"), Stap(4, 50)], herh)], (
+            "Vier tot zes keer 30 seconden voluit (Wingate-achtig) met 4 minuten heel rustig trappen. Zonder ERG. "
+            "Naar Burgomaster en Gibala (J Appl Physiol 2005; J Physiol 2006): weinig tijd, grote prikkel. "
+            "Zwaar voor de benen; niet de dag voor een lange rit.")
+    return _sets(maak, budget, p, [(4,), (5,), (6,)])
+
+
+def vo2_tabata(budget, p):
+    """8×(20 s / 10 s) zo hard als kan, sets met 5 min herstel. Tabata e.a., Med Sci Sports Exerc 1996."""
+    def maak(sets):
+        bl = []
+        for i in range(sets):
+            bl.append(Blok(f"Tabata {i + 1}", [Stap(20 / 60, 170, vrij=True, cue="Alles"),
+                                               Stap(10 / 60, 40, vrij=True, cue="Rust")], 8))
+            bl.append(Blok(None, [Stap(5, 50)]))
+        return f"Tabata {sets}×8", bl, (
+            "Acht keer 20 seconden zo hard als je kunt met 10 seconden rust, vier minuten lang; daarna 5 "
+            "minuten rustig. Zonder ERG. Naar Tabata e.a. (Med Sci Sports Exerc, 1996). Het origineel is "
+            "één set tot uitputting; meer sets maakt het een trainingsvorm, geen test.")
+    return _sets(maak, budget, p, [(2,), (3,)])
+
+
+def drempel_seiler_16(budget, p):
+    """4×16 min met 2 min herstel (~95% van 40-min tijdritvermogen). Seiler e.a. 2013."""
+    def maak(herh):
+        return f"Seiler {herh}×16m", [Blok("Hoofdblok", [Stap(16, 93), Stap(2, 55)], herh)], (
+            "Lange blokken net onder je drempel met korte rust: veel tijd op een hoog, houdbaar tempo. "
+            "Naar Seiler e.a. (Scand J Med Sci Sports, 2013). Past alleen in een lange sessie.")
+    return _sets(maak, budget, p, [(2,), (3,), (4,)])
+
+
 def vo2_kort(werk_s: int, rust_s: int, pct: int, opties: list):
     def variant(budget, p):
         def maak(sets, herh):
@@ -242,10 +316,9 @@ def herstel_spinups(budget, p):
 BIBLIOTHEEK: dict[str, list[Variant]] = {
     "tempo": [tempo_versnellingen, tempo_kracht, tempo_oplopend],
     "sweetspot": [ss_uitschieters, ss_ladder, ss_cadans],
-    "drempel": [drempel_over_unders, drempel_piramide, drempel_lang, drempel_harde_start],
-    "vo2max": [vo2_kort(30, 15, 120, [(2, 8), (2, 10), (3, 10), (3, 13)]),
-               vo2_kort(40, 20, 118, [(2, 6), (2, 8), (3, 8), (3, 10)]),
-               vo2_piramide, vo2_harde_start],
+    "drempel": [drempel_over_unders, drempel_piramide, drempel_lang, drempel_harde_start, drempel_seiler_16],
+    "vo2max": [vo2_ronnestad, vo2_kort(40, 20, 118, [(2, 6), (2, 8), (3, 8), (3, 10)]),
+               vo2_piramide, vo2_harde_start, vo2_helgerud, vo2_seiler_8, vo2_sit, vo2_tabata],
     "duur": DUUR,
     "lange_rit": DUUR,
     "lange_rit_tempo": [lang_sterk_eindigen, lang_heuvels],
@@ -310,9 +383,9 @@ def catalogus(minuten: int = 60, p: float = 0.5) -> list[tuple[str, int, Trainin
     """Alle vormen per soort, voor het scherm Bibliotheek."""
     from .workouts import bouw as bouw_klassiek
     uit = []
-    for soort in ("herstel", "duur", "lange_rit_tempo", "tempo", "sweetspot", "drempel", "vo2max"):
+    for soort in ("herstel", "duur", "lange_rit_tempo", "tempo", "sweetspot", "drempel", "vo2max", "ftp_test"):
         m = 150 if soort.startswith("lange") else minuten
-        for v in range(aantal(soort)):
+        for v in range(2 if soort == "ftp_test" else aantal(soort)):
             t = bouw_klassiek(soort, m, p, "opbouw", v)
             if not any(t.naam == x[2].naam for x in uit):
                 uit.append((soort, v, t))

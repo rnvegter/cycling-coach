@@ -236,6 +236,7 @@ async def instellingen_opslaan(request: Request, achtergrond: BackgroundTasks):
         "intervallen_binnen": f.get("intervallen_binnen") == "1",
         "ftp_test": int(f.get("ftp_test_weken") or 8) > 0,
         "ftp_test_weken": int(f.get("ftp_test_weken") or 8),
+        "ftp_test_vorm": "20min" if f.get("ftp_test_vorm") == "20min" else "ramp",
         "variatie": f.get("variatie") == "1",
         "max_binnen_minuten": int(f.get("max_binnen") or 120),
     }

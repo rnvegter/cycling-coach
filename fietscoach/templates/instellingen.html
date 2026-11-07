@@ -110,6 +110,11 @@
       {% for n, t in [(4, 'Elke 4 weken'), (8, 'Elke 8 weken (aanrader)'), (12, 'Elke 12 weken'), (0, 'Nooit')] %}
       <option value="{{ n }}" {% if elke == n %}selected{% endif %}>{{ t }}</option>{% endfor %}
     </select></div>
+  <div class="wx-field"><label class="wx-label" for="ftp_test_vorm">Soort test</label>
+    <select class="wx-input" id="ftp_test_vorm" name="ftp_test_vorm">
+      <option value="ramp" {% if vk.ftp_test_vorm != '20min' %}selected{% endif %}>Ramp-test (kort, in ERG)</option>
+      <option value="20min" {% if vk.ftp_test_vorm == '20min' %}selected{% endif %}>20-minutentest (Allen &amp; Coggan)</option>
+    </select></div>
 </section>
 
 <section class="wx-card t-cold">

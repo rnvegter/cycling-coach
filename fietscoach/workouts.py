@@ -195,6 +195,25 @@ def ftp_test(minuten: int = 0, p: float = 0, fase: str = "") -> Training:
     )
 
 
+def ftp_test_20(minuten: int = 0, p: float = 0, fase: str = "") -> Training:
+    """De 20-minutentest volgens Allen en Coggan (Training and Racing with a Power Meter):
+    warming-up met snel trappen, 5 minuten maximaal, herstel, dan 20 minuten zo hard als
+    je volhoudt. FTP ≈ 95% van het gemiddelde over die 20 minuten."""
+    blokken = [Blok("Warming-up", [Stap(20, (50, 70))]),
+               Blok("Snel trappen", [Stap(1, 70, 110), Stap(1, 50)], 3),
+               Blok(None, [Stap(5, 55)]),
+               Blok("5 minuten maximaal", [Stap(5, 115, vrij=True, cue="Maximaal")]),
+               Blok(None, [Stap(10, 50)]),
+               Blok("20 minuten test", [Stap(20, 100, vrij=True, cue="Test")]),
+               Blok("Cooling-down", [Stap(10, (60, 45))])]
+    return Training(
+        "ftp_test", "FTP-test 20 minuten", blokken,
+        "Zonder ERG: rijd de 5 en de 20 minuten zelf zo gelijkmatig mogelijk, niet te hard starten. "
+        "Nieuwe FTP ≈ 95% van je gemiddelde vermogen over de 20 minuten. Protocol van Allen en Coggan; "
+        "langer dan de ramp-test, maar dichter bij wat je echt een uur volhoudt.",
+    )
+
+
 BOUWERS = {
     "herstel": herstel,
     "duur": duur,
@@ -209,7 +228,10 @@ KWALITEITSSOORTEN = set(OPTIES) | {"openers", "ftp_test"}
 
 
 def bouw(soort: str, minuten: int, p: float = 0, fase: str = "", variant: int = 0) -> Training:
-    """Variant 0 is de klassieke vorm; hogere nummers komen uit de bibliotheek."""
+    """Variant 0 is de klassieke vorm; hogere nummers komen uit de bibliotheek.
+    Bij de FTP-test kiest variant de testvorm (0 = ramp, 1 = 20 minuten), niet de week."""
+    if soort == "ftp_test":
+        return ftp_test_20() if variant % 2 == 1 else ftp_test(minuten, p, fase)
     if variant:
         from . import bibliotheek
         t = bibliotheek.bouw(soort, minuten, p, variant)
