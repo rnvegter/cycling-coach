@@ -92,7 +92,8 @@ def _hrv(status: dict, v: date) -> dict:
 
 
 def _terug(pad: str, msg: str) -> RedirectResponse:
-    return RedirectResponse(f"{pad}?msg={quote(msg)}", status_code=303)
+    anker = "#eigen" if pad == "/bibliotheek" else ""
+    return RedirectResponse(f"{pad}?msg={quote(msg)}{anker}", status_code=303)
 
 
 def _context(request: Request, tab: str, msg: str | None) -> dict:
@@ -153,7 +154,8 @@ def scherm_instellingen(request: Request, msg: str | None = None):
 @app.get("/bibliotheek")
 def scherm_bibliotheek(request: Request, minuten: int = 60, msg: str | None = None):
     from . import bibliotheek, eigen
-    ctx = _context(request, "bibliotheek", msg)
+    ctx = _context(request, "bibliotheek", None)  # meldingen horen bij het blok onderaan
+    ctx["eigen_msg"] = msg
     ctx["eigen"] = eigen.alle()
     ctx["eigen_soorten"] = eigen.SOORTEN
     minuten = max(45, min(120, minuten))

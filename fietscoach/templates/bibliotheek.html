@@ -3,9 +3,27 @@
 <p class="wx-note" style="margin-top:0">Alle trainingsvormen. Het schema wisselt ze per week af en past ze aan op je tijd en je progressie. Hier zie je ze op
   {% for m in [45, 60, 90] %}<a href="/bibliotheek?minuten={{ m }}" class="fc-env {% if m == minuten %}fc-env--binnen{% endif %}" style="text-decoration:none">{{ m }} min</a> {% endfor %}
   (lange ritten op 2u30).</p>
-<section class="wx-card t-warm">
+<div class="fc-legend">{% for k, n in zonelegenda %}<span class="t-{{ k }}"><i></i>{{ n }}</span>{% endfor %}</div>
+<div class="wx-strip" style="margin-bottom:var(--sp-5)"></div>
+
+{% for soort, trainingen in groepen %}
+<h2 class="wx-heading" style="margin-top:var(--sp-5)">{{ soortnaam({'soort': soort}) }} <span class="wx-dim wx-num" style="font-size:var(--step--1)">· {{ trainingen|length }}</span></h2>
+{% for t in trainingen %}
+<details class="fc-wk {{ klasse({'soort': soort}) }}">
+  <summary><span class="fc-day__name">{{ t.naam }}</span><span class="wx-eyebrow" style="margin:0">{% if t.extra.eigen %}eigen · {% endif %}{{ t.minuten|round|int }} min</span></summary>
+  <div style="padding:0 var(--sp-4) var(--sp-4)">
+    {{ profiel_t(t) }}
+    <p class="wx-note">{{ t.toelichting }}</p>
+    <details class="wx-more"><summary>Opbouw</summary><pre class="fc-opbouw">{{ t.beschrijving() }}</pre></details>
+  </div>
+</details>
+{% endfor %}
+{% endfor %}
+
+<section class="wx-card t-warm" id="eigen" style="margin-top:var(--sp-6)">
   <p class="wx-eyebrow">Eigen workouts</p>
   <h2 class="wx-heading">.zwo-bestanden toevoegen</h2>
+  {% if eigen_msg %}<p class="wx-status {% if '✗' in eigen_msg or 'Niet ' in eigen_msg %}wx-status--err{% else %}t-cool{% endif %}">{{ eigen_msg }}</p>{% endif %}
   <p class="wx-note" style="margin-top:0">Bijvoorbeeld geëxporteerd uit Zwift of een andere app. Ze worden ingedeeld op wat ze zijn
     (duur, tempo, sweetspot, drempel of VO2max) en doen mee in de afwisseling op dagen waar ze in je tijd passen.
     Ze staan bij je data, niet in de repo.</p>
@@ -52,21 +70,4 @@
     <button class="wx-btn wx-btn--quiet">Alle eigen workouts verwijderen</button></form>
   {% endif %}
 </section>
-
-<div class="fc-legend">{% for k, n in zonelegenda %}<span class="t-{{ k }}"><i></i>{{ n }}</span>{% endfor %}</div>
-<div class="wx-strip" style="margin-bottom:var(--sp-5)"></div>
-
-{% for soort, trainingen in groepen %}
-<h2 class="wx-heading" style="margin-top:var(--sp-5)">{{ soortnaam({'soort': soort}) }} <span class="wx-dim wx-num" style="font-size:var(--step--1)">· {{ trainingen|length }}</span></h2>
-{% for t in trainingen %}
-<details class="fc-wk {{ klasse({'soort': soort}) }}">
-  <summary><span class="fc-day__name">{{ t.naam }}</span><span class="wx-eyebrow" style="margin:0">{% if t.extra.eigen %}eigen · {% endif %}{{ t.minuten|round|int }} min</span></summary>
-  <div style="padding:0 var(--sp-4) var(--sp-4)">
-    {{ profiel_t(t) }}
-    <p class="wx-note">{{ t.toelichting }}</p>
-    <details class="wx-more"><summary>Opbouw</summary><pre class="fc-opbouw">{{ t.beschrijving() }}</pre></details>
-  </div>
-</details>
-{% endfor %}
-{% endfor %}
 {% endblock %}
