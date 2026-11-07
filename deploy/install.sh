@@ -40,7 +40,9 @@ stap "Controles"
 if command -v pveversion >/dev/null 2>&1 || [ -d /etc/pve ]; then
   fout "dit is een Proxmox-host. Installeer Fietscoach in een container (LXC), niet op de host zelf."
 fi
-[ -f "$CODE/requirements.txt" ] && [ -d "$CODE/fietscoach" ] || fout "$CODE lijkt geen Fietscoach-clone."
+if [ ! -f "$CODE/requirements.txt" ] || [ ! -d "$CODE/fietscoach" ]; then
+  fout "$CODE lijkt geen Fietscoach-clone."
+fi
 [ -r /etc/os-release ] || fout "geen /etc/os-release: is dit wel Debian?"
 # shellcheck disable=SC1091
 . /etc/os-release
