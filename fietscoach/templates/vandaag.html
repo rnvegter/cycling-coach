@@ -56,6 +56,23 @@
     <span class="wx-chip">{{ soortnaam(t) }}</span>
     {% if t.status == 'gedaan' and t.score %}<span class="wx-chip">score <b>{{ t.score.totaal }}</b></span>{% endif %}
   </div>
+  {% if t.status == 'gepland' %}
+  {# Vlak voor de training nog schuiven met de duur; zelfde mechanisme als
+     'Andere tijd op een dag', dus de week schuift mee en intervals.icu volgt. #}
+  {% set basis = [60, 90, 120, 150, 180, 240] if t.soort.startswith('lange') else [30, 45, 60, 75, 90, 120] %}
+  {% set opties = (basis + [t.minuten])|unique|sort %}
+  <form method="post" action="/uitzondering" class="fc-duurkeuze">
+    <input type="hidden" name="datum" value="{{ t.datum }}">
+    <span class="wx-label">Duur aanpassen</span>
+    <div class="wx-choice">
+      {% for m in opties %}
+      <button class="wx-chip" name="minuten" value="{{ m }}" aria-pressed="{{ 'true' if m == t.minuten else 'false' }}">{{ m }}</button>
+      {% endfor %}
+      <button class="wx-chip" name="minuten" value="0" title="Overslaan; een intervaltraining schuift naar later in de week">Overslaan</button>
+      {% if t.datum in uitz %}<button class="wx-chip" name="weg" value="1">Plan</button>{% endif %}
+    </div>
+  </form>
+  {% endif %}
   {{ profiel(t) }}
   <div class="fc-schaal"><span>0</span><span>– – 100% FTP</span><span>{{ t.duur }} min</span></div>
   {% if t.weer or t.notities %}

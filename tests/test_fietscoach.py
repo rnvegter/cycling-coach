@@ -349,3 +349,35 @@ def test_bibliotheekscherm(monkeypatch):
     monkeypatch.setattr(service, "laad_config", lambda *a: dict(VOORBEELD))
     r = TestClient(web.app).get("/bibliotheek?minuten=90")
     assert r.status_code == 200 and "Over-unders" in r.text and r.text.count("fc-profiel") >= 15
+
+
+# --- duur van vandaag aanpassen ---------------------------------------------------
+
+@pytest.mark.parametrize("minuten,verwacht", [(45, 45), (90, 90)])
+def test_duur_vandaag_aanpassen(minuten, verwacht):
+    # di 10 nov staat een sweetspot van 60 min; kies vlak voor de training een andere duur
+    cfg = CFG | {"uitzonderingen": {"2026-11-10": minuten}}
+    service.genereer(cfg, date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    service.bijsturen(cfg, date(2026, 11, 10), NepIntervals([], 60, 60), weer(date(2026, 11, 10)))
+    s = next(s for s in service.laad_plan() if s["datum"] == "2026-11-10")
+    assert s["soort"] == "sweetspot" and s["minuten"] == verwacht and abs(s["duur"] - verwacht) <= 1
+
+
+def test_duurknoppen_op_vandaag(monkeypatch):
+    from fastapi.testclient import TestClient
+    from fietscoach import web
+    cfg = dict(VOORBEELD, uitzonderingen={})
+    monkeypatch.setattr(service, "laad_config", lambda *a: cfg)
+    monkeypatch.setattr(service, "pas_toe", lambda *a: "ok")
+    monkeypatch.setattr(service, "bewaar_instellingen", lambda c: cfg.update(c))
+    monkeypatch.setattr(web, "vandaag", lambda: date(2026, 11, 10))
+    service.genereer(cfg, date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    c = TestClient(web.app)
+    html = c.get("/").text
+    assert "Duur aanpassen" in html and 'value="2026-11-10"' in html
+    gepland = next(s for s in service.laad_plan() if s["datum"] == "2026-11-10")["minuten"]
+    assert gepland == 55  # week 1 rijdt op 90%: geen 'ronde' knop
+    assert f'name="minuten" value="{gepland}" aria-pressed="true"' in html
+    assert html.count('aria-pressed="true"') == 1
+    r = c.post("/uitzondering", data={"datum": "2026-11-10", "minuten": "45"}, follow_redirects=False)
+    assert r.status_code == 303

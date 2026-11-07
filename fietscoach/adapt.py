@@ -202,9 +202,15 @@ def pas_uitzonderingen_toe(venster: list[dict], uitz: dict[str, int], week: dict
         elif m < s["minuten"]:
             s["minuten"] = m
             s["notities"].append(f"Aangepast aan {m} min beschikbaar")
-        elif s["soort"] in ("duur", *LANG) and m > s["minuten"]:
-            s["minuten"] = round5(m * (0.65 if s["herstelweek"] else 1.0))
-            s["notities"].append(f"Verlengd: {m} min beschikbaar")
+        elif m > s["minuten"]:
+            if s["soort"] in ("duur", *LANG):
+                s["minuten"] = round5(m * (0.65 if s["herstelweek"] else 1.0))
+            elif s["soort"] == "herstel":
+                s["minuten"] = min(m, 60)  # herstel blijft kort
+            elif s["soort"] != "ftp_test":
+                s["minuten"] = m  # meer herhalingen of extra duur, binnen de grenzen van de vorm
+            if s["minuten"] > s["basis_minuten"]:
+                s["notities"].append(f"Verlengd: {m} min beschikbaar")
     return log
 
 

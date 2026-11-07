@@ -91,6 +91,7 @@ def scherm_vandaag(request: Request, msg: str | None = None):
         readiness=fb["readiness"].get(v.isoformat()),
         rpe=fb["rpe"],
         uitzonderingen=sorted((ctx["cfg"].get("uitzonderingen") or {}).items()),
+        uitz=ctx["cfg"].get("uitzonderingen") or {},
         min_datum=v.isoformat(), max_datum=(v + timedelta(days=13)).isoformat(),
     )
     return templates.TemplateResponse(request, "vandaag.html", ctx)

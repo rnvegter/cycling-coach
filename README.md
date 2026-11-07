@@ -17,6 +17,7 @@ Werkt zoals JOIN, maar draait op je eigen server en ziet eruit als cwem (zelfde 
 - **Afwisseling**: elke week een andere vorm van dezelfde soort, bv. sweetspot als blokken, met uitschieters, als ladder of op wisselende cadans; drempel als over-unders, piramide of met harde start; VO2max als 30/15's, 40/20's of piramide; duurritten met spin-ups, sprints of krachtblokjes. Uit te zetten in Instellingen. Alles in % FTP, met cadansdoelen waar dat hoort (ook in de .zwo).
 - **RPE na elke rit** (1–10): voelde een soort training zwaarder dan bedoeld, dan wordt de volgende van die soort lichter, en andersom. Heb je de RPE al in intervals.icu gegeven, dan wordt die overgenomen.
 - **Readiness** (benen en energie, 1–5): bij 3 of lager wordt vandaag lichter; bij 2 of lager ook morgen.
+- **Duur van vandaag aanpassen**: op de kaart van de training kies je vlak voor het rijden 30–120 minuten (lange rit 60–240) of *Overslaan*. Intervaltrainingen krijgen meer of minder herhalingen; overslaan schuift ze naar later in de week. Daarna gaat de nieuwe versie meteen naar intervals.icu.
 - **Andere tijd op een dag**: geen tijd → een intervaltraining of lange rit schuift naar een andere dag in die week; meer tijd → langere duurrit; een normaal vrije dag met tijd krijgt een extra duurrit.
 - **Ongeplande zware rit** (clubrit, tocht: ≥ 2 uur, load ≥ 80 of RPE ≥ 8) → de dag erna wordt herstel.
 - **Gemiste intervaltraining** → naar een latere duurdag in dezelfde week.
