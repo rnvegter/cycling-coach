@@ -136,6 +136,8 @@ if ! curl -fs -o /dev/null "http://127.0.0.1:$PORT/ready"; then
   if [ -n "$vorige" ]; then
     fout "de app reageert niet. Terug naar de laatst werkende versie:
   cd $CODE && git checkout ${vorige:0:7} && bash deploy/install.sh
+Zegt de oude versie dat de gegevens te nieuw zijn, zet dan eerst de back-up van zojuist terug:
+  systemctl stop fietscoach && tar -xzf ${bestand:-/var/backups/fietscoach/<nieuwste>.tar.gz} -C /
 (en later terug naar de nieuwste met: git checkout main && git pull)"
   fi
   fout "de app reageert niet. Kijk met: journalctl -u fietscoach -n 50"

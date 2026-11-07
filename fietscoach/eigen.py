@@ -16,9 +16,9 @@ import json
 import re
 import xml.etree.ElementTree as ET
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 from .workouts import Blok, Stap, Training
 

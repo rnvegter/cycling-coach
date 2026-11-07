@@ -1,4 +1,4 @@
-"""Opdrachtregel: python -m fietscoach.cli [genereer|bijsturen|sync|dagelijks|toon]"""
+"""Opdrachtregel: python -m fietscoach.cli [genereer|bijsturen|sync|dagelijks|toon|test|rooktest|importeer]"""
 from __future__ import annotations
 
 import argparse
@@ -39,7 +39,9 @@ def importeer(paden: list[str]) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(prog="fietscoach")
-    ap.add_argument("opdracht", choices=["genereer", "bijsturen", "sync", "dagelijks", "toon", "test", "importeer"])
+    ap.add_argument("opdracht", choices=["genereer", "bijsturen", "sync", "dagelijks", "toon", "test",
+                                         "rooktest", "importeer"])
+    ap.add_argument("--opname", help="bij rooktest: map waarin de antwoorden (zonder persoonsgegevens) komen")
     ap.add_argument("--start", help="startdatum JJJJ-MM-DD (bij genereer)")
     ap.add_argument("paden", nargs="*", help="bij importeer: .zwo-bestanden, .zip-bestanden of mappen")
     a = ap.parse_args()
@@ -68,6 +70,16 @@ def main() -> None:
             regels = [(False, f"Kon geen verbinding opzetten: {e.__class__.__name__}: {e}")]
         for ok, r in regels:
             print(("✓ " if ok else "✗ ") + r)
+        raise SystemExit(0 if all(ok for ok, _ in regels) else 1)
+    elif a.opdracht == "rooktest":
+        from pathlib import Path
+
+        from .rooktest import rooktest
+        regels = rooktest(cfg, Path(a.opname) if a.opname else None)
+        for ok, r in regels:
+            print(("✓ " if ok else "✗ ") + r)
+        if a.opname:
+            print(f"Antwoorden bewaard in {a.opname} (persoonlijke velden vervangen door <weg>).")
         raise SystemExit(0 if all(ok for ok, _ in regels) else 1)
     elif a.opdracht == "sync":
         print(service.sync(cfg))

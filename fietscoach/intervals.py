@@ -23,11 +23,17 @@ class Intervals:
         self.aid = athlete_id or "0"
         self.c = httpx.Client(base_url=BASE, auth=("API_KEY", api_key), timeout=30,
                               transport=transport, headers={"User-Agent": "fietscoach"})
+        self.opname = None  # optioneel: f(naam, json) krijgt elk antwoord (voor de rooktest)
+
+    def _neem_op(self, naam: str, j):
+        if self.opname:
+            self.opname(naam, j)
+        return j
 
     def _get(self, pad: str, **params):
         r = self.c.get(f"/athlete/{self.aid}{pad}", params=params)
         r.raise_for_status()
-        return r.json()
+        return self._neem_op(pad.strip("/") or "atleet", r.json())
 
     def atleet(self) -> dict:
         return self._get("")
@@ -50,7 +56,7 @@ class Intervals:
     def upsert(self, events: list[dict]) -> list[dict]:
         r = self.c.post(f"/athlete/{self.aid}/events/bulk", params={"upsert": "true"}, json=events)
         r.raise_for_status()
-        return r.json()
+        return self._neem_op("upsert", r.json())
 
     def verwijder_extern(self, external_ids: list[str]) -> int:
         """Verwijder events op ons eigen id; ids die niet bestaan worden genegeerd."""

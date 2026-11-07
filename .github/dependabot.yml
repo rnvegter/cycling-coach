@@ -1,0 +1,20 @@
+# Eens per maand een voorstel (pull request) voor nieuwere versies.
+# De tests draaien op elk voorstel; pas samenvoegen als ze groen zijn.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      python:
+        patterns: ["*"]
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      acties:
+        patterns: ["*"]

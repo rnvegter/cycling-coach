@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_dag.html" import dag %}
+{% from "_dag.html" import dag, waaromlijst with context %}
 {% block inhoud %}
 
 {# --- De vijf getallen uit intervals.icu ------------------------------ #}
@@ -106,6 +106,7 @@
     <pre class="fc-opbouw">{{ t.beschrijving }}</pre>
     <div class="wx-bar-row"><a class="wx-btn wx-btn--quiet" href="/zwo/{{ t.datum }}">Download .zwo</a></div>
   </details>
+  {{ waaromlijst(t.datum) }}
 </section>
 {% elif vandaag_s %}
 <section class="wx-card t-frozen"><p class="wx-eyebrow">Vandaag</p><h2 class="fc-today__name">Rustdag</h2></section>

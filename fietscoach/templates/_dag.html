@@ -1,3 +1,15 @@
+{# Waarom ziet deze dag er zo uit: de wijzigingen sinds het laatste nieuwe schema. #}
+{% macro waaromlijst(datum) %}
+{% set ww = waarom.get(datum) %}
+{% if ww %}
+<details class="wx-more"><summary>Waarom zo? ▸</summary>
+  <ul class="fc-notes">
+  {% for w in ww[:5] %}<li>{{ w.tijd[8:10] }}-{{ w.tijd[5:7] }} {{ w.tijd[11:16] }}: {{ w.van }} → {{ w.naar }}<br>{{ w.waarom|join(' · ') }}</li>{% endfor %}
+  </ul>
+</details>
+{% endif %}
+{% endmacro %}
+
 {# Eén dag in een weeklijst. #}
 {% macro dag(s, vandaag, rpe, terug='/') %}
 <li class="fc-day {{ klasse(s) }} is-{{ s.status }} {% if s.soort == 'rust' %}is-rust{% endif %} {% if s.datum == vandaag %}is-today{% endif %}">
@@ -22,6 +34,7 @@
       {{ profiel(s) }}
       <pre class="fc-opbouw">{{ s.beschrijving }}</pre>
     </details>
+    {% if s.status == 'gepland' %}{{ waaromlijst(s.datum) }}{% endif %}
   </div>
   {% endif %}
 </li>

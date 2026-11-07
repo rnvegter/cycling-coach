@@ -162,7 +162,7 @@ def _kies(rol: str, m: dict, doel: str, avail: int, nq: int, vk: dict) -> tuple[
 DOELZWAARTE = {"tempo": (3, 3), "sweetspot": (3, 4), "drempel": (4, 5), "vo2max": (4, 5)}
 
 
-def opties(soort: str, minuten: int, p: float, fase: str = "") -> list[tuple[str, "workouts.Training"]]:
+def opties(soort: str, minuten: int, p: float, fase: str = "") -> list[tuple[str, workouts.Training]]:
     """Alle vormen van deze soort die in de tijd passen: klassiek, bibliotheek en eigen."""
     from . import bibliotheek, eigen
     uit, namen = [], set()
@@ -200,7 +200,7 @@ def doelzwaarte(s: dict, p: float | None = None) -> int | None:
     return min(doel, 3) if s.get("herstelweek") else doel
 
 
-def training_voor(s: dict) -> "workouts.Training | None":
+def training_voor(s: dict) -> workouts.Training | None:
     """De training voor een dag. Eén plek, zodat scherm, .zwo en intervals.icu altijd
     hetzelfde zien. Voor intervalsoorten: uit alle vormen die passen (ook je eigen
     workouts) die met een zwaarte zo dicht mogelijk bij het doel voor deze week;

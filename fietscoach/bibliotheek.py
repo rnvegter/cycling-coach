@@ -8,7 +8,7 @@ Variant 0 is steeds de klassieke vorm uit workouts.py.
 """
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from .workouts import COOLDOWN, WARMUP, Blok, Stap, Training, fmt_duur, fmt_uren
 
@@ -77,7 +77,8 @@ def ss_uitschieters(budget, p):
             bl.append(Blok(f"Sweetspot {i + 1}", [Stap(2.75, 90), Stap(0.25, 125, vrij=True, cue="Uitschieter")], lengte // 3))
             bl.append(Blok(None, [Stap(5, 55)]))
         return f"Sweetspot met uitschieters {blokken}×{lengte}m", bl, \
-            "Sweetspot met elke drie minuten een uitschieter van 15 seconden (ERG uit, rond 125%). Daarna meteen terug naar sweetspot: zo leer je herstellen onder belasting."
+            ("Sweetspot met elke drie minuten een uitschieter van 15 seconden (ERG uit, rond 125%). "
+             "Daarna meteen terug naar sweetspot: zo leer je herstellen onder belasting.")
     return _sets(maak, budget, p, [(2, 12), (3, 12), (2, 15), (3, 15), (2, 18)])
 
 
@@ -85,7 +86,7 @@ def ss_ladder(budget, p):
     def maak(*treden):
         pcts = [88, 90, 92, 92][:len(treden)]
         stappen = []
-        for t, pct in zip(treden, pcts):
+        for t, pct in zip(treden, pcts, strict=True):
             stappen += [Stap(t, pct), Stap(4, 55)]
         return f"Sweetspotladder {'-'.join(map(str, treden))}", [Blok("Ladder", stappen)], \
             "Elke trede iets langer en iets zwaarder. De laatste is het lastigst; hou hem gelijkmatig."

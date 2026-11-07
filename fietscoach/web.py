@@ -120,7 +120,7 @@ def _context(request: Request, tab: str, msg: str | None) -> dict:
     except FileNotFoundError:
         cfg = {"doel": {}, "week": {}}
     return {"request": request, "tab": tab, "msg": msg, "cfg": cfg, "status": service.laad_status(),
-            "vandaag": vandaag().isoformat(), "plan": service.laad_plan()}
+            "vandaag": vandaag().isoformat(), "plan": service.laad_plan(), "waarom": service.waarom_per_dag()}
 
 
 @app.get("/")
@@ -426,6 +426,7 @@ def verbinding(request: Request):
 def ready():
     """Draait de app en kan hij zijn gegevens lezen? Voor het updatescript; los van intervals.icu."""
     try:
+        service.migreer()
         service.laad_config()
         service.laad_plan()
     except Exception as e:  # noqa: BLE001

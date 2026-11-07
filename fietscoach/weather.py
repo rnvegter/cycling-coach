@@ -53,7 +53,11 @@ def verwachting(lat: float, lon: float, dagen: int = 8) -> Verwachting:
     }
     r = httpx.get(URL, params=params, timeout=20)
     r.raise_for_status()
-    j = r.json()
+    return uit_json(r.json())
+
+
+def uit_json(j: dict) -> Verwachting:
+    """Het antwoord van Open-Meteo omzetten (los, zodat opgenomen antwoorden te testen zijn)."""
     d = j["daily"]
     dag = {}
     for i, t in enumerate(d["time"]):

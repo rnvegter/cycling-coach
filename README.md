@@ -7,14 +7,17 @@ Eigen JOIN-achtige trainingsplanner. Maakt een periodiseringsschema (basis → o
 Werkt zoals JOIN, maar draait op je eigen server en ziet eruit als cwem (zelfde kleuren, letters en kaarten). De zeven kleuren van de cwem-temperatuurschaal staan hier voor trainingszones: blauw = herstel, groenblauw = duur, olijf = tempo, geel = sweetspot, oranje = drempel, oranjerood = VO2max.
 
 **Vier schermen**
-- **Vandaag**: FTP, eFTP, fitheid, vermoeidheid en vorm; readiness invullen; de training van vandaag met profielgrafiek, weer en aanpassingen; openstaande feedback (RPE); deze week; een andere tijd op een dag.
-- **Schema**: alle weken met focus, uren en per training de opbouw en (na het rijden) de score.
+- **Vandaag**: FTP, eFTP, fitheid, vermoeidheid en vorm; readiness invullen; de training van vandaag met profielgrafiek, weer, voedingsadvies en aanpassingen; een andere training kiezen; openstaande feedback (RPE); deze week; een andere tijd op een dag.
+- **Schema**: alle weken met focus, uren, TSS gepland en gereden, en per training de opbouw en (na het rijden) de score.
 - **Bibliotheek**: alle 34 trainingsvormen met profiel, uitleg en een **zwaarte van 1 tot 5**, te bekijken op 45, 60 of 90 minuten. De zwaarte volgt uit de intensiteit (IF, genormaliseerd vermogen per seconde met een 30 s-gemiddelde, zodat korte sprints niet overdrijven): < 0,60 = 1, < 0,72 = 2, < 0,82 = 3, < 0,87 = 4, daarboven 5. Lange ritten tellen zwaarder: TSS ≥ 100 minstens 3, ≥ 180 minstens 4. Daaronder protocollen uit gepubliceerd onderzoek, met bron: 30/15's (Rønnestad 2015/2020), 4×8 en 4×16 (Seiler 2013), 4×4 (Helgerud 2007), sprintintervallen 4–6×30 s (Burgomaster/Gibala 2005), Tabata (1996) en de 20-minutentest (Allen & Coggan).
 - **Instellingen**: doel (FTP, duur of een tocht met datum), focusblokken, je gewone week, voorkeuren en weergrenzen. Opslaan bouwt het schema vanaf vandaag opnieuw op; het verleden blijft staan.
 
 **Wat het schema laat meebewegen**
 - **Focus per blok**: `gemengd`, `sweetspot` (3×10 → 2×20 min), `zone2` of `gepolariseerd`. Elke vierde week herstel; een FTP-test standaard elke 8 weken (instelbaar: 4, 8, 12 of nooit), als ramp-test of als 20-minutentest. Altijd dezelfde vorm, zodat de uitslagen vergelijkbaar zijn. Na de test stelt de app de nieuwe FTP voor op basis van de eFTP uit intervals.icu.
 - **Afwisseling**: elke week een andere vorm van dezelfde soort, bv. sweetspot als blokken, met uitschieters, als ladder of op wisselende cadans; drempel als over-unders, piramide of met harde start; VO2max als 30/15's, 40/20's of piramide; duurritten met spin-ups, sprints of krachtblokjes. Uit te zetten in Instellingen. Alles in % FTP, met cadansdoelen waar dat hoort (ook in de .zwo). Korte harde stukken (sprints, 30/15's, 40/20's, uitschieters) zijn zonder ERG (`freeride`): een trainer reageert een paar seconden te laat, en bij blokken onder een minuut rijd je anders een groot deel op het verkeerde vermogen.
+- **Zwaarte loopt op**: binnen een blok van vier weken kiest de app trainingen met oplopende zwaarte (sweetspot 3→4, drempel en VO2max 4→5), hoogstens één training van zwaarte 5 per week, en in de herstelweek niet boven 3. Een te zware RPE of een matige readiness zet de zwaarte een stap terug.
+- **Andere training kiezen**: op de kaart van vandaag (en de volgende training) een andere vorm van dezelfde soort, met zwaarte, ook je eigen workouts; of lichter (duurrit, herstelrit). *Automatisch* zet het terug.
+- **Voeding** bij ritten vanaf 75 minuten: algemene richtlijn voor koolhydraten per uur (30–60 g bij 1–2,5 uur, 60–90 g daarboven) en drinken (0,5–0,75 l per uur), met het totaal voor de rit. Geen persoonlijk advies.
 - **RPE na elke rit** (1–10): voelde een soort training zwaarder dan bedoeld, dan wordt de volgende van die soort lichter, en andersom. Heb je de RPE al in intervals.icu gegeven, dan wordt die overgenomen.
 - **Readiness** (benen en energie, 1–5): bij 3 of lager wordt vandaag lichter; bij 2 of lager ook morgen. Levert je horloge HRV en rusthartslag aan intervals.icu, dan telt dat automatisch mee: duidelijk lagere HRV of hogere rusthartslag dan je gemiddelde van de 28 dagen ervoor = minder hersteld.
 - **Afwezig** (vakantie, reis): een periode in Instellingen, ook ver vooruit. Geen trainingen; na 5 dagen of langer eerst drie dagen zonder intervallen.
@@ -30,6 +33,10 @@ Werkt zoals JOIN, maar draait op je eigen server en ziet eruit als cwem (zelfde 
 - **.zwo-download** per training, als reserve voor Zwift.
 
 Elke ochtend om 05:30 en met de knop **Bijsturen**: ritten, wellness en weer vers ophalen, bijsturen en de komende 14 dagen naar intervals.icu (type *Ride* = buiten/Wahoo, *VirtualRide* = Zwift). Na invoer in het scherm (RPE, readiness, duur, afwezigheid) is het schema direct bijgewerkt met de laatst opgehaalde gegevens; de sync naar intervals.icu gaat dan op de achtergrond.
+
+**Je eigen wijzigingen in intervals.icu blijven staan.** Verplaats, wijzig of verwijder je een training van Fietscoach in intervals.icu, dan overschrijft de sync dat niet meer. Op de dag staat wat er veranderd is, met de knop **Terug naar plan**.
+
+**Waarom ziet een dag er zo uit?** Elke keer dat een geplande training verandert (weer, readiness, RPE, minder tijd, ruilen) wordt dat met de reden bewaard in `geschiedenis.jsonl`. Onder elke training staat *Waarom zo?* met de wijzigingen sinds het laatste nieuwe schema.
 
 **Hoe het schema tot stand komt.** De generator maakt een basisschema (`basis.json`), dat nooit wordt bijgestuurd. Bij elke wijziging wordt het schema dat je ziet (`plan.json`) daar opnieuw uit afgeleid met al je invoer: ritten, RPE, readiness, uitzonderingen, afwezigheid, vorm en weer. Zelfde invoer, zelfde uitkomst; niets stapelt zich op.
 
@@ -145,13 +152,27 @@ sudo -u fietscoach FIETSCOACH_CONFIG=/etc/fietscoach/config.yaml FIETSCOACH_DATA
 
 Alleen lezen. Je ziet per stap (atleet, wellness, ritten, kalender) of het lukt en welke velden binnenkomen; bij een fout de HTTP-code met uitleg (401 = sleutel klopt niet).
 
+## Rooktest: werkt alles echt?
+
+Na de installatie, en na een grote update:
+
+```
+sudo -u fietscoach FIETSCOACH_CONFIG=/etc/fietscoach/config.yaml FIETSCOACH_DATA=/var/lib/fietscoach /opt/fietscoach/.venv/bin/python -m fietscoach.cli rooktest --opname /tmp/fietscoach-opname
+```
+
+Controleert Python, Debian-versie, tijdzone, de datamap en de versie van de gegevens; leest bij intervals.icu en verwerkt je ritten zoals de ochtendronde doet; zet één **proeftraining** 330 dagen vooruit in je kalender (*Fietscoach rooktest (mag weg)*) om te zien of intervals.icu de trainingstekst begrijpt, en haalt hem meteen weer weg; en vraagt het weer voor morgen op bij Open-Meteo. Eindigt met ✓ of ✗ per stap.
+
+Met `--opname` worden de antwoorden bewaard, met persoonlijke velden (naam, e-mail, locatie, id's, notities) vervangen door `<weg>`. Kijk ze na; in `tests/fixtures/echt/` draaien de tests er dan ook op.
+
 ## Bewaken met Uptime Kuma
 
 `GET /health` geeft 200 als de laatste sync naar intervals.icu minder dan 36 uur oud is en foutloos ging, anders 503 met de reden. Maak in Uptime Kuma een HTTP-monitor op `http://<ip-lxc>:8766/health`.
 
 ## Ontwikkelen
 
-- Tests: `pip install -r requirements.txt pytest` en `python -m pytest`. Bij elke push draaien de tests (Python 3.11 en 3.13) en shellcheck in GitHub Actions.
+- Tests: `pip install -r requirements.txt pytest` en `python -m pytest`. Per onderdeel een bestand in `tests/` (planner, bijsturen, bibliotheek, eigen, zwaarte, intervals, weer, web, opslag, rooktest); gedeelde nepdiensten in `tests/helpers.py`.
+- Bij elke push in GitHub Actions: tests (Python 3.11 en 3.13), `ruff check` en shellcheck. Dependabot stelt eens per maand nieuwere versies voor.
+- **Versie van de gegevens**: `versie.json` in de datamap. Verandert de vorm van de bestanden, dan verhoog je `SCHEMA` in `service.py` en voeg je een stap toe aan `MIGRATIES`; die draait vanzelf bij de volgende start. Zijn de gegevens nieuwer dan de code (na terugzetten van een oudere versie), dan weigert de app met een duidelijke melding in plaats van iets kapot te maken.
 - Afhankelijkheden staan vast in `requirements.txt`; de directe staan in `requirements.in`.
 - Lettertypes (Barlow Condensed, IBM Plex) worden zelf geserveerd uit `fietscoach/static/fonts` (SIL Open Font License); er gaan geen verzoeken naar Google.
 - Formulieren worden alleen geaccepteerd vanaf de site zelf (controle op `Origin`, ook achter Caddy via `X-Forwarded-Host`).

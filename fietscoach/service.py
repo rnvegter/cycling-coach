@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import copy
 import fcntl
-import hashlib
 import functools
+import hashlib
 import json
 import os
 import threading
@@ -88,6 +88,130 @@ def _schrijf(naam: str, inhoud) -> None:
     tmp.replace(DATA / naam)
 
 
+# --- versie van de gegevens -----------------------------------------------------
+# Verhoog SCHEMA en voeg een stap toe aan MIGRATIES als de vorm van de bestanden
+# in DATA verandert. Elke stap brengt de gegevens van versie n naar n+1.
+
+SCHEMA = 2
+
+
+class DataTeNieuw(RuntimeError):
+    pass
+
+
+def _naar_1() -> None:
+    laad_basis()  # oude installaties: basis.json uit plan.json halen
+
+
+def _naar_2() -> None:
+    fb = _lees("feedback.json", None)
+    if fb is not None:
+        fb.setdefault("ruil", {})
+        _schrijf("feedback.json", fb)
+
+
+MIGRATIES = {0: _naar_1, 1: _naar_2}
+_gemigreerd: set[str] = set()
+
+
+def gegevensversie() -> int:
+    v = _lees("versie.json", None)
+    if v is not None:
+        return int(v.get("schema", 0))
+    return 0 if (DATA / "plan.json").exists() or (DATA / "basis.json").exists() else SCHEMA
+
+
+@onder_slot
+def migreer() -> list[str]:
+    """Brengt de bestanden in DATA naar de huidige vorm. Veilig om vaak aan te roepen."""
+    if str(DATA) in _gemigreerd:
+        return []
+    v, log = gegevensversie(), []
+    if v > SCHEMA:
+        raise DataTeNieuw(f"De gegevens zijn van een nieuwere versie (schema {v}, deze app kent {SCHEMA}). "
+                          "Update de app, of zet de back-up van vóór de update terug.")
+    while v < SCHEMA:
+        MIGRATIES[v]()
+        v += 1
+        log.append(f"Gegevens bijgewerkt naar schema {v}.")
+    if v != _lees("versie.json", {}).get("schema") and DATA.exists():
+        _schrijf("versie.json", {"schema": v})
+    _gemigreerd.add(str(DATA))
+    return log
+
+
+# --- geschiedenis ------------------------------------------------------------------
+
+GESCHIEDENIS = "geschiedenis.jsonl"
+MAX_GESCHIEDENIS = 1000
+
+
+def _kort(s: dict) -> str:
+    if s["soort"] == "rust":
+        return "Rust"
+    waar = "Zwift" if s.get("omgeving") == "binnen" else "buiten"
+    return f"{s.get('naam', s['soort'])} · {s.get('duur', s.get('minuten'))} min · {waar}"
+
+
+def wijzigingen(oud: list[dict], nieuw: list[dict], vandaag: date, bron: str) -> list[dict]:
+    """Wat er voor vandaag en later veranderd is, met de reden die de bijsturing gaf."""
+    v = vandaag.isoformat()
+    tijd = datetime.now().isoformat(timespec="seconds")
+    if bron == "nieuw":
+        return [{"tijd": tijd, "datum": None, "van": None, "naar": None, "waarom": ["Nieuw schema gemaakt"]}] \
+            if oud else []
+    was = {s["datum"]: s for s in oud}
+    uit = []
+    for s in nieuw:
+        o = was.get(s["datum"])
+        if s["datum"] < v or not o or s.get("status") != "gepland":
+            continue
+        if _kort(o) == _kort(s):
+            continue
+        nieuwe = [n for n in s.get("notities", []) if n not in o.get("notities", [])]
+        uit.append({"tijd": tijd, "datum": s["datum"], "van": _kort(o), "naar": _kort(s),
+                    "waarom": nieuwe or s.get("notities") or ["Bijgestuurd"]})
+    return uit
+
+
+def schrijf_geschiedenis(regels: list[dict]) -> None:
+    if not regels:
+        return
+    DATA.mkdir(parents=True, exist_ok=True)
+    p = DATA / GESCHIEDENIS
+    with open(p, "a", encoding="utf-8") as f:
+        for r in regels:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    alles = p.read_text(encoding="utf-8").splitlines()
+    if len(alles) > MAX_GESCHIEDENIS * 1.2:
+        tmp = DATA / (GESCHIEDENIS + ".tmp")
+        tmp.write_text("\n".join(alles[-MAX_GESCHIEDENIS:]) + "\n", encoding="utf-8")
+        tmp.replace(p)
+
+
+def geschiedenis(n: int = 200) -> list[dict]:
+    p = DATA / GESCHIEDENIS
+    if not p.exists():
+        return []
+    uit = []
+    for regel in p.read_text(encoding="utf-8").splitlines()[-n:]:
+        try:
+            uit.append(json.loads(regel))
+        except ValueError:
+            continue
+    return uit
+
+
+def waarom_per_dag() -> dict[str, list[dict]]:
+    """Per datum de wijzigingen, nieuwste eerst, sinds het laatste nieuwe schema."""
+    per: dict[str, list[dict]] = {}
+    for r in reversed(geschiedenis()):
+        if r.get("datum") is None:
+            break
+        per.setdefault(r["datum"], []).append(r)
+    return per
+
+
 def laad_config(pad: Path | None = None) -> dict:
     with open(pad or CONFIG, encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
@@ -160,13 +284,14 @@ def genereer(cfg: dict, start: date | None = None, vandaag: date | None = None) 
     """Nieuw basisschema. Wat al voorbij is blijft staan; vanaf vandaag het nieuwe.
     Daarna meteen afleiden (zonder netwerk), zodat het scherm klopt."""
     vandaag = vandaag or date.today()
+    migreer()
     start = start or date.fromisoformat(str(cfg["doel"]["startdatum"]))
     nieuw = planner.genereer(cfg, start)
     v = vandaag.isoformat()
     oud = laad_basis()
     basis = ([x for x in oud if x["datum"] < v] + [x for x in nieuw if x["datum"] >= v]) if oud else nieuw
     _schrijf("basis.json", basis)
-    bijsturen(cfg, vandaag, ververs=False, weer_ophalen=False)
+    bijsturen(cfg, vandaag, ververs=False, weer_ophalen=False, bron="nieuw")
     return laad_plan()
 
 
@@ -276,12 +401,6 @@ def afleiden(basis: list[dict], cfg: dict, status: dict, fb: dict, verwachting,
     return plan, log
 
 
-def starttijd(week: dict, datum: str) -> str:
-    """Wanneer je op die dag vertrekt; standaard 09:30 in het weekend, 18:30 doordeweeks."""
-    dag = planner.DAGEN[date.fromisoformat(datum).weekday()]
-    return (week.get(dag) or {}).get("start") or ("09:30" if dag in ("za", "zo") else "18:30")
-
-
 def _weer(cfg: dict, ophalen: bool):
     """Uurverwachting uit de cache (weer.json); vers ophalen als gevraagd of als hij oud is.
     Lukt ophalen niet, dan de cache zolang die niet ouder dan twee dagen is."""
@@ -308,10 +427,12 @@ def _weer(cfg: dict, ophalen: bool):
 
 @onder_slot
 def bijsturen(cfg: dict, vandaag: date | None = None, ic: Intervals | None = None,
-              verwachting=None, ververs: bool = True, weer_ophalen: bool | str = True) -> list[str]:
+              verwachting=None, ververs: bool = True, weer_ophalen: bool | str = True,
+              bron: str = "bijsturen") -> list[str]:
     """ververs=True (ochtendtimer, knop Bijsturen): ritten, wellness en weer vers ophalen.
     ververs=False (invoer in het scherm): alleen de caches gebruiken, dus direct klaar."""
     vandaag = vandaag or date.today()
+    migreer()
     basis = laad_basis()
     if not basis:
         return ["Nog geen schema. Maak eerst een schema."]
@@ -348,8 +469,10 @@ def bijsturen(cfg: dict, vandaag: date | None = None, ic: Intervals | None = Non
         if verwachting is None and weer_ophalen:
             log.append("Geen weerbericht beschikbaar.")
 
-    plan, extra = afleiden(basis, cfg, status, fb, verwachting, vandaag, laad_plan())
+    vorig = laad_plan()
+    plan, extra = afleiden(basis, cfg, status, fb, verwachting, vandaag, vorig)
     log += extra
+    schrijf_geschiedenis(wijzigingen(vorig, plan, vandaag, bron))
     status["bijgestuurd"] = datetime.now().strftime("%d-%m %H:%M")
     status["bijgestuurd_iso"] = datetime.now().isoformat(timespec="seconds")
     status["log"] = log
