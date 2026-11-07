@@ -3,6 +3,41 @@
 <p class="wx-note" style="margin-top:0">Alle trainingsvormen. Het schema wisselt ze per week af en past ze aan op je tijd en je progressie. Hier zie je ze op
   {% for m in [45, 60, 90] %}<a href="/bibliotheek?minuten={{ m }}" class="fc-env {% if m == minuten %}fc-env--binnen{% endif %}" style="text-decoration:none">{{ m }} min</a> {% endfor %}
   (lange ritten op 2u30).</p>
+<section class="wx-card t-warm">
+  <p class="wx-eyebrow">Eigen workouts</p>
+  <h2 class="wx-heading">.zwo-bestanden toevoegen</h2>
+  <p class="wx-note" style="margin-top:0">Bijvoorbeeld geëxporteerd uit Zwift of een andere app. Ze worden ingedeeld op wat ze zijn
+    (duur, tempo, sweetspot, drempel of VO2max) en doen mee in de afwisseling op dagen waar ze in je tijd passen.
+    Ze staan bij je data, niet in de repo.</p>
+  <form method="post" action="/eigen" enctype="multipart/form-data">
+    <label class="wx-label" for="eigen-bestanden">Bestanden (.zwo of .zip, meerdere tegelijk)</label>
+    <input class="wx-input" id="eigen-bestanden" type="file" name="bestanden" accept=".zwo,.zip" multiple style="padding-top:var(--sp-2)">
+    <label class="wx-label" for="eigen-map" style="margin-top:var(--sp-3)">Of een hele map (op een computer)</label>
+    <input class="wx-input" id="eigen-map" type="file" name="bestanden" webkitdirectory multiple style="padding-top:var(--sp-2)">
+    <div class="wx-bar-row"><button class="wx-btn">Toevoegen</button>
+      <span class="wx-note" style="margin:0">Zelfde bestandsnaam = bijwerken. Andere bestanden in de map worden overgeslagen.</span></div>
+  </form>
+  {% if eigen %}<p class="wx-eyebrow" style="margin-top:var(--sp-4)">{{ eigen|length }} eigen workouts ·
+    {% for s, n in eigen|groupby('soort') %}{{ soortnaam({'soort': s}) }} {{ n|length }}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
+  {% for w in eigen %}
+  <details class="fc-wk {{ klasse({'soort': w.soort}) }}" style="margin-top:var(--sp-3)">
+    <summary><span class="fc-day__name">{{ w.naam }}</span>
+      <span class="wx-eyebrow" style="margin:0">{{ soortnaam({'soort': w.soort}) }} · {{ w.minuten|round|int }} min</span></summary>
+    <div style="padding:0 var(--sp-4) var(--sp-4)">
+      {{ profiel_t(w.training) }}
+      <p class="wx-note">{{ w.training.toelichting }}</p>
+      <details class="wx-more"><summary>Opbouw</summary><pre class="fc-opbouw">{{ w.training.beschrijving() }}</pre></details>
+      <form method="post" action="/eigen/weg" class="wx-bar-row" onsubmit="return confirm('Deze workout verwijderen?')">
+        <input type="hidden" name="id" value="{{ w.id }}"><button class="wx-btn wx-btn--quiet">Verwijderen</button></form>
+    </div>
+  </details>
+  {% endfor %}
+  {% if eigen|length > 1 %}
+  <form method="post" action="/eigen/alle-weg" class="wx-bar-row" onsubmit="return confirm('Alle {{ eigen|length }} eigen workouts verwijderen?')">
+    <button class="wx-btn wx-btn--quiet">Alle eigen workouts verwijderen</button></form>
+  {% endif %}
+</section>
+
 <div class="fc-legend">{% for k, n in zonelegenda %}<span class="t-{{ k }}"><i></i>{{ n }}</span>{% endfor %}</div>
 <div class="wx-strip" style="margin-bottom:var(--sp-5)"></div>
 

@@ -151,9 +151,10 @@ def scherm_instellingen(request: Request, msg: str | None = None):
 
 
 @app.get("/bibliotheek")
-def scherm_bibliotheek(request: Request, minuten: int = 60):
-    from . import bibliotheek
-    ctx = _context(request, "bibliotheek", None)
+def scherm_bibliotheek(request: Request, minuten: int = 60, msg: str | None = None):
+    from . import bibliotheek, eigen
+    ctx = _context(request, "bibliotheek", msg)
+    ctx["eigen"] = eigen.alle()
     minuten = max(45, min(120, minuten))
     groepen = [(soort, [t for _, _, t in rijen])
                for soort, rijen in groupby(bibliotheek.catalogus(minuten), key=lambda x: x[0])]
@@ -161,7 +162,53 @@ def scherm_bibliotheek(request: Request, minuten: int = 60):
     return templates.TemplateResponse(request, "bibliotheek.html", ctx)
 
 
-# --- acties -------------------------------------------------------------------
+# --- acties ---
+
+@app.post("/eigen")
+async def eigen_toevoegen(request: Request, achtergrond: BackgroundTasks):
+    """Eigen workouts in bulk: losse .zwo-bestanden, een hele map, of .zip-bestanden."""
+    from . import eigen
+    f = await request.form()
+    bestanden = []
+    for b in f.getlist("bestanden"):
+        if hasattr(b, "read") and b.filename:
+            laag = b.filename.lower()
+            if laag.endswith(".zwo"):
+                bestanden.append((b.filename, await b.read(eigen.MAX_BYTES + 1)))
+            elif laag.endswith(".zip"):
+                bestanden.append((b.filename, await b.read(eigen.MAX_ZIP_TOTAAL)))
+    if not bestanden:
+        return _terug("/bibliotheek", "Niet opgeslagen: geen .zwo- of .zip-bestanden gekozen.")
+    gelukt, mislukt = eigen.importeer(bestanden)
+    if gelukt:
+        _snel(achtergrond)
+    tekst = f"{len(gelukt)} workout(s) toegevoegd."
+    if len(gelukt) <= 5 and gelukt:
+        tekst = "Toegevoegd: " + "; ".join(gelukt) + "."
+    if mislukt:
+        tekst += f" ✗ {len(mislukt)} niet: " + "; ".join(mislukt[:5]) + (" …" if len(mislukt) > 5 else "")
+    return _terug("/bibliotheek", tekst)
+
+
+@app.post("/eigen/alle-weg")
+async def eigen_alle_weg(achtergrond: BackgroundTasks):
+    from . import eigen
+    n = eigen.verwijder_alle()
+    _snel(achtergrond)
+    return _terug("/bibliotheek", f"{n} eigen workout(s) verwijderd.")
+
+
+@app.post("/eigen/weg")
+async def eigen_weg(request: Request, achtergrond: BackgroundTasks):
+    from . import eigen
+    f = await request.form()
+    if eigen.verwijder(str(f.get("id") or "")):
+        _snel(achtergrond)
+        return _terug("/bibliotheek", "Workout verwijderd.")
+    return _terug("/bibliotheek", "Niet gevonden ✗")
+
+
+# --- overige acties ------------------------------------------------------------
 
 def _snel(achtergrond: BackgroundTasks) -> str:
     """Direct lokaal bijsturen met de caches; de sync naar intervals.icu daarna op de achtergrond."""

@@ -233,10 +233,19 @@ def bouw(soort: str, minuten: int, p: float = 0, fase: str = "", variant: int = 
     if soort == "ftp_test":
         return ftp_test_20() if variant % 2 == 1 else ftp_test(minuten, p, fase)
     if variant:
-        from . import bibliotheek
-        t = bibliotheek.bouw(soort, minuten, p, variant)
-        if t:
-            return t
+        from . import bibliotheek, eigen
+        n_lib = bibliotheek.aantal(soort)          # klassiek + bibliotheek
+        n_eigen = len(eigen.voor_soort(soort))     # eigen .zwo-workouts van deze soort
+        keuze = variant % (n_lib + n_eigen)
+        if keuze >= n_lib:
+            t = eigen.kies(soort, minuten, keuze - n_lib)
+            if t:
+                return t
+            keuze %= n_lib  # past geen eigen workout in deze tijd: dan uit de bibliotheek
+        if keuze:
+            t = bibliotheek.bouw(soort, minuten, p, keuze)
+            if t:
+                return t
     return BOUWERS[soort](minuten, p, fase)
 
 

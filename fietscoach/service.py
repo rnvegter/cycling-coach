@@ -20,12 +20,16 @@ from pathlib import Path
 
 import yaml
 
-from . import adapt, planner, weather
+from . import adapt, eigen, planner, weather
 from .intervals import PREFIX, Intervals, eftp_uit, naar_event
 
 CONFIG = Path(os.environ.get("FIETSCOACH_CONFIG", "config.yaml"))
 DATA = Path(os.environ.get("FIETSCOACH_DATA", "data"))
 HORIZON = 14  # dagen vooruit: bijsturen en naar intervals.icu
+
+# Eigen .zwo-workouts staan bij de data, niet in de repo. Een functie zodat
+# tests (en een andere FIETSCOACH_DATA) de map kunnen wisselen.
+eigen.map_bron = lambda: DATA / "workouts"
 INSTELBAAR = ("doel", "week", "voorkeuren", "weer", "uitzonderingen", "afwezig")
 WEER_GELDIG_UUR = 3     # zo lang gebruiken we een opgehaald weerbericht bij invoer in het scherm
 FROZEN_DAGEN = 21       # ouder dan dit: status uit het vorige plan (ritten halen we 28 dagen terug)

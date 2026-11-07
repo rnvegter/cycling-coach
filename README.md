@@ -119,6 +119,22 @@ Het script kopieert eerst je data en config naar `/var/backups/fietscoach`, werk
 git checkout 1a2b3c4 && bash deploy/install.sh
 ```
 
+## Eigen workouts (.zwo)
+
+Workouts die je zelf hebt, bijvoorbeeld geëxporteerd uit Zwift of een andere app, voeg je toe in **Bibliotheek → Eigen workouts**. Dat kan in bulk:
+
+- meerdere .zwo-bestanden tegelijk kiezen;
+- een hele map kiezen (op een computer);
+- een of meer .zip-bestanden uploaden (submappen mogen; andere bestanden worden overgeslagen);
+- of in de container, voor een map met bestanden:
+  ```
+  sudo -u fietscoach FIETSCOACH_CONFIG=/etc/fietscoach/config.yaml FIETSCOACH_DATA=/var/lib/fietscoach /opt/fietscoach/.venv/bin/python -m fietscoach.cli importeer /pad/naar/map
+  ```
+
+Elk bestand wordt gecontroleerd (geldige fietsworkout, geen XML-entities, max. 256 kB; een zip max. 1000 workouts en 64 MB uitgepakt). Dezelfde bestandsnaam opnieuw = bijwerken. De workout wordt automatisch ingedeeld op de tijd in elke zone: minstens 5 min boven 105% = VO2max, 10 min 95–105% = drempel, 10 min 88–95% = sweetspot, 15 min 76–88% = tempo, anders duur. In het schema doet hij mee in de afwisseling van die soort, maar alleen op dagen waar hij past: niet langer dan je beschikbare tijd (+5 min) en niet korter dan 60% ervan.
+
+De bestanden staan in `/var/lib/fietscoach/workouts`, bij je data en dus ook in de back-ups, maar **niet in de repo**: het zijn jouw bestanden, en zo verspreid je ze niet mee als de repo ooit openbaar wordt.
+
 ## Verbinding met intervals.icu testen
 
 In **Instellingen → Verbinding testen**, of in de container:

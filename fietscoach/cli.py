@@ -7,10 +7,41 @@ from datetime import date
 from . import service
 
 
+def importeer(paden: list[str]) -> None:
+    """Eigen workouts in bulk uit bestanden, zips en mappen (mappen doorzocht met submappen)."""
+    import os
+    import shutil
+    from pathlib import Path
+
+    from . import eigen
+    if not paden:
+        raise SystemExit("Geef één of meer .zwo-bestanden, .zip-bestanden of mappen.")
+    bestanden = []
+    for pad in map(Path, paden):
+        kandidaten = sorted(pad.rglob("*")) if pad.is_dir() else [pad]
+        for k in kandidaten:
+            if k.is_file() and k.suffix.lower() in (".zwo", ".zip"):
+                bestanden.append((k.name, k.read_bytes()))
+    gelukt, mislukt = eigen.importeer(bestanden)
+    for r in gelukt:
+        print("✓ " + r)
+    for r in mislukt:
+        print("✗ " + r)
+    print(f"{len(gelukt)} toegevoegd, {len(mislukt)} niet.")
+    # Draait dit als root, geef de bestanden dan aan de eigenaar van de datamap,
+    # zodat de webapp (gebruiker fietscoach) ze later ook kan bijwerken.
+    m = eigen.map_bron() if eigen.map_bron else None
+    if m and m.is_dir() and os.geteuid() == 0:
+        st = m.parent.stat()
+        for p in [m, *m.glob("*.zwo")]:
+            shutil.chown(p, st.st_uid, st.st_gid)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(prog="fietscoach")
-    ap.add_argument("opdracht", choices=["genereer", "bijsturen", "sync", "dagelijks", "toon", "test"])
+    ap.add_argument("opdracht", choices=["genereer", "bijsturen", "sync", "dagelijks", "toon", "test", "importeer"])
     ap.add_argument("--start", help="startdatum JJJJ-MM-DD (bij genereer)")
+    ap.add_argument("paden", nargs="*", help="bij importeer: .zwo-bestanden, .zip-bestanden of mappen")
     a = ap.parse_args()
     cfg = service.laad_config()
     if a.opdracht == "genereer":
@@ -21,6 +52,9 @@ def main() -> None:
             print(regel)
         if a.opdracht == "dagelijks":
             print(service.sync(cfg))
+    elif a.opdracht == "importeer":
+        importeer(a.paden)
+        print(service.pas_toe_snel(cfg) or "Schema bijgewerkt.")
     elif a.opdracht == "test":
         from .intervals import verbindingstest
         try:

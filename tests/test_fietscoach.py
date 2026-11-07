@@ -882,3 +882,146 @@ def test_bibliotheek_toont_protocollen_en_tests(monkeypatch):
     html = TestClient(web.app).get("/bibliotheek?minuten=90").text
     for naam in ("Rønnestad", "Helgerud", "Seiler 4×8m", "Sprintintervallen", "Tabata", "FTP-test 20 minuten", "FTP-test (ramp)"):
         assert naam in html, naam
+
+
+# --- eigen workouts (.zwo) ----------------------------------------------------------
+
+import io  # noqa: E402
+import zipfile  # noqa: E402
+
+from fietscoach import eigen  # noqa: E402
+
+
+def _zwo(naam, stappen, auteur="Test", sport="bike"):
+    return (f'<workout_file><author>{auteur}</author><name>{naam}</name>'
+            f'<description>Testworkout - 3x hard. Rustig beginnen.</description><sportType>{sport}</sportType>'
+            f'<workout>{stappen}</workout></workout_file>').encode()
+
+
+VO2_ZWO = _zwo("Test VO2", '<Warmup Duration="600.0001" PowerLow="0.5" PowerHigh="0.75" pace="0"/>'
+               '<SteadyState Duration="120" Power="0.6" Cadence="95"/>'
+               '<IntervalsT Repeat="6" OnDuration="120" OffDuration="120" OnPower="1.12" OffPower="0.5" Cadence="100" CadenceResting="85"/>'
+               '<FreeRide Duration="300" FlatRoad="1"/><MaxEffort Duration="20"/>'
+               '<Ramp Duration="60" PowerLow="0.6" PowerHigh="1.2"/><Cooldown Duration="480" PowerLow="0.6" PowerHigh="0.4"/>'
+               '<textevent timeoffset="0" message="hoi"/><Onbekend Duration="10"/>')
+DUUR_ZWO = _zwo("Test duur", '<Warmup Duration="300" PowerLow="0.5" PowerHigh="0.65"/><SteadyState Duration="2400" Power="0.7"/>'
+                '<Cooldown Duration="300" PowerLow="0.6" PowerHigh="0.45"/>')
+DREMPEL_ZWO = _zwo("Test drempel", '<Warmup Duration="600" PowerLow="0.5" PowerHigh="0.75"/>'
+                   '<IntervalsT Repeat="3" OnDuration="600" OffDuration="180" OnPower="0.98" OffPower="0.55"/>'
+                   '<Cooldown Duration="360" PowerLow="0.6" PowerHigh="0.45"/>')
+
+
+def test_zwo_inlezen():
+    t, meta = eigen.lees_zwo(VO2_ZWO, "x.zwo")
+    assert meta["naam"] == "Test VO2" and meta["onbekend"] == ["Onbekend"]  # textevent genegeerd, onbekend gemeld
+    assert round(t.minuten) == 10 + 2 + 24 + 5 + 0 + 1 + 8  # 20 s MaxEffort ≈ 0
+    iv = next(b for b in t.blokken if b.titel == "Intervallen")
+    assert iv.herhalingen == 6 and [(s.pct, s.rpm) for s in iv.stappen] == [(112, 100), (50, 85)]
+    stappen = [s for b in t.blokken for s in b.stappen]
+    assert any(s.vrij and s.cue == "Voluit" for s in stappen) and any(s.vrij and not s.cue for s in stappen)
+    assert stappen[0].minuten == 10  # 600.0001 s afgerond
+    assert "- 3x" not in t.toelichting and "Testworkout – 3x" in t.toelichting  # geen nep-stap voor intervals.icu
+    for regel in t.beschrijving().splitlines():
+        if regel.startswith("-"):
+            assert STAP_RPM.match(regel), regel
+    import xml.etree.ElementTree as ET
+    ET.fromstring(workouts.zwo(t))
+
+
+def test_zwo_indeling():
+    assert eigen.indeling(eigen.lees_zwo(VO2_ZWO)[0]) == "vo2max"
+    assert eigen.indeling(eigen.lees_zwo(DUUR_ZWO)[0]) == "duur"
+    assert eigen.indeling(eigen.lees_zwo(DREMPEL_ZWO)[0]) == "drempel"
+
+
+@pytest.mark.parametrize("data,fout", [
+    (b'<?xml version="1.0"?><!DOCTYPE x [<!ENTITY a "aaaa">]><workout_file><workout/></workout_file>', "ENTITY"),
+    (b"<html><body>geen workout</body></html>", "geen Zwift-workout"),
+    (b"dit is geen xml", "geen geldige XML"),
+    (_zwo("Loop", '<SteadyState Duration="60" Power="1"/>', sport="run"), "geen fietsworkout"),
+    (_zwo("Leeg", '<Onbekend Duration="60"/>'), "geen stappen"),
+    (b"<workout_file>" + b" " * (300 * 1024) + b"</workout_file>", "te groot"),
+])
+def test_zwo_weigert_onzin(data, fout):
+    with pytest.raises(eigen.OngeldigBestand, match=fout):
+        eigen.lees_zwo(data)
+
+
+def _zip(bestanden):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for naam, data in bestanden:
+            z.writestr(naam, data)
+    return buf.getvalue()
+
+
+def test_bulkimport_zip_en_bijwerken():
+    zipdata = _zip([("map/sub/vo2.zwo", VO2_ZWO), ("map/duur.zwo", DUUR_ZWO), ("__MACOSX/._duur.zwo", b"rommel"),
+                    ("leesmij.txt", b"x"), ("kapot.zwo", b"<html/>")])
+    gelukt, mislukt = eigen.importeer([("export.zip", zipdata), ("drempel.zwo", DREMPEL_ZWO), ("foto.jpg", b"x")])
+    assert len(gelukt) == 3 and all("nieuw" in g for g in gelukt)
+    assert mislukt == ["kapot.zwo: geen Zwift-workout (workout_file met workout ontbreekt)"]
+    assert sorted(w.id for w in eigen.alle()) == ["drempel", "duur", "vo2"]
+    gelukt, _ = eigen.importeer([("duur.zwo", DUUR_ZWO)])
+    assert "bijgewerkt" in gelukt[0] and len(eigen.alle()) == 3
+
+
+def test_zip_bom_en_te_veel():
+    groot = _zip([("groot.zwo", b"<workout_file>" + b"x" * (eigen.MAX_BYTES + 10) + b"</workout_file>")])
+    _, mislukt = eigen.importeer([("a.zip", groot)])
+    assert "te groot" in mislukt[0]
+    bom = _zip([(f"w{i}.zwo", b"0" * 70_000) for i in range(1000)])
+    _, mislukt = eigen.importeer([("bom.zip", bom)])
+    assert "64 MB" in mislukt[0] and eigen.alle() == []
+    _, mislukt = eigen.importeer([("x.zip", b"geen zip")])
+    assert "geen geldig zip" in mislukt[0]
+
+
+def test_eigen_workouts_in_het_schema():
+    eigen.importeer([("drempel.zwo", DREMPEL_ZWO)])  # 10 + 3×13 + 6 = 55 min, drempel
+    cfg = _cfg(weken=8, focus="gemengd") | {"week": {"di": {"minuten": 60}, "do": {"minuten": 75},
+                                                      "za": {"minuten": 180, "buiten": True}}}
+    plan = planner.genereer(cfg, date(2026, 11, 9))
+    drempel = [s for s in plan if s["soort"] == "drempel"]
+    eigen_namen = [s for s in drempel if s["naam"] == "Test drempel"]
+    assert eigen_namen, [s["naam"] for s in drempel]
+    assert all(s["duur"] == 55 for s in eigen_namen)
+    assert any(s["naam"] != "Test drempel" for s in drempel)  # afwisseling blijft
+    # te lang voor de beschikbare tijd: dan nooit
+    plan = planner.genereer(cfg | {"week": {"di": {"minuten": 45}, "do": {"minuten": 45},
+                                            "za": {"minuten": 180, "buiten": True}}}, date(2026, 11, 9))
+    assert not any(s["naam"] == "Test drempel" for s in plan)
+
+
+def test_bulk_via_scherm(monkeypatch):
+    from fastapi.testclient import TestClient
+    from fietscoach import web
+    monkeypatch.setattr(service, "laad_config", lambda *a: dict(VOORBEELD))
+    monkeypatch.setattr(service, "sync_veilig", lambda *a: "")
+    c = TestClient(web.app)
+    bestanden = [("bestanden", ("vo2.zwo", VO2_ZWO, "application/xml")),
+                 ("bestanden", ("map/duur.zwo", DUUR_ZWO, "application/xml")),         # uit een gekozen map
+                 ("bestanden", ("map/notities.txt", b"x", "text/plain")),               # overgeslagen
+                 ("bestanden", ("set.zip", _zip([("drempel.zwo", DREMPEL_ZWO)]), "application/zip"))]
+    r = c.post("/eigen", files=bestanden, follow_redirects=False)
+    assert r.status_code == 303 and "Toegevoegd" in r.headers["location"].replace("%20", " ")
+    html = c.get("/bibliotheek").text
+    assert "3 eigen workouts" in html and "Test drempel" in html and "Auteur: Test" in html
+    r = c.post("/eigen/alle-weg", follow_redirects=False)
+    assert eigen.alle() == []
+
+
+def test_bulk_via_opdrachtregel(tmp_path, monkeypatch, capsys):
+    from fietscoach import cli
+    map_ = tmp_path / "export"
+    (map_ / "sub").mkdir(parents=True)
+    (map_ / "vo2.zwo").write_bytes(VO2_ZWO)
+    (map_ / "sub" / "duur.zwo").write_bytes(DUUR_ZWO)
+    (map_ / "lees.txt").write_text("x")
+    zipbestand = tmp_path / "meer.zip"
+    zipbestand.write_bytes(_zip([("drempel.zwo", DREMPEL_ZWO)]))
+    monkeypatch.setattr(service, "laad_config", lambda *a: dict(VOORBEELD))
+    monkeypatch.setattr("sys.argv", ["fietscoach", "importeer", str(map_), str(zipbestand)])
+    cli.main()
+    uit = capsys.readouterr().out
+    assert "3 toegevoegd, 0 niet." in uit and len(eigen.alle()) == 3
