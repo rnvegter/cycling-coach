@@ -116,6 +116,8 @@ def dagrollen(week: dict, max_q: int = 2) -> dict[int, str]:
 
 
 def standaard_omgeving(s: dict, vk: dict) -> str:
+    if s.get("omgeving_vast"):
+        return s["omgeving"]
     binnen = {"ftp_test"} | (INTERVALSOORTEN if vk.get("intervallen_binnen", True) else set())
     if not s["buiten_toegestaan"] or s["soort"] in binnen:
         return "binnen"

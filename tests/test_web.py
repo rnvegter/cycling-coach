@@ -212,3 +212,63 @@ def test_training_ruilen(monkeypatch):
     TestClient(web.app).post("/ruil", data={"datum": "2026-11-10", "keuze": "auto"})
     assert "2026-11-10" not in service.laad_feedback()["ruil"]
 
+
+
+# --- extra training ------------------------------------------------------------------
+
+def test_extra_training_toevoegen_en_weghalen(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from fietscoach import web
+    kal = Kalender()
+    monkeypatch.setattr(service, "laad_config", lambda *a: dict(CFG))
+    monkeypatch.setattr(service, "client", lambda cfg: _client(kal))
+    monkeypatch.setattr(web, "vandaag", lambda: date(2026, 11, 9))
+    service.genereer(CFG, date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    c = TestClient(web.app)
+    assert "Extra training" in c.get("/").text
+
+    # Vrijdag 13-11 is vrij: sweetspot op Zwift erbij.
+    r = c.post("/extra", data={"datum": "2026-11-13", "minuten": "45", "soort": "sweetspot", "omgeving": "binnen"},
+               follow_redirects=False)
+    assert "toegevoegd" in r.headers["location"]
+    vr = next(s for s in service.laad_plan() if s["datum"] == "2026-11-13")
+    assert vr["soort"] == "sweetspot" and vr["omgeving"] == "binnen" and vr["handmatig"] and vr["tss"] > 0
+    assert vr["week"] == 1 and "Extra training, zelf toegevoegd" in vr["notities"]
+    # donderdag 12-11 is tempo: waarschuwing voor twee intensieve dagen achter elkaar
+    assert any("Gisteren staat ook een intensieve training" in n for n in vr["notities"])
+    service.sync(CFG, date(2026, 11, 9))
+    assert "fietscoach-2026-11-13" in kal.events
+    assert "Extra training weghalen" in c.get("/schema").text
+
+    # Op een dag met een training: weigeren.
+    r = c.post("/extra", data={"datum": "2026-11-10", "minuten": "60", "soort": "duur"}, follow_redirects=False)
+    assert "Niet toegevoegd" in r.headers["location"].replace("%20", " ")
+    # Te ver vooruit of onzin
+    assert service.zet_extra("2026-12-31", 60, vandaag=date(2026, 11, 9))
+    assert service.zet_extra("2026-11-13", 5, vandaag=date(2026, 11, 9))
+
+    # Weghalen, ook uit intervals.icu
+    r = c.post("/extra", data={"datum": "2026-11-13", "weg": "1", "terug": "https://elders.example"},
+               follow_redirects=False)
+    assert r.headers["location"].startswith("/?")
+    assert not any(s["datum"] == "2026-11-13" for s in service.laad_plan())
+    service.sync(CFG, date(2026, 11, 9))
+    assert "fietscoach-2026-11-13" not in kal.events
+
+
+def test_extra_duurrit_wordt_niet_gekaapt_en_buiten_blijft_buiten():
+    service.genereer(CFG, date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    service.zet_extra("2026-11-13", 60, "duur", "buiten", vandaag=date(2026, 11, 9))
+    # dinsdag-sweetspot gemist: die mag niet naar de zelf toegevoegde vrijdag
+    plan = {s["datum"]: s for s in service.laad_plan()}
+    ritten = {}
+    status = {"ritten": ritten}
+    service._schrijf("status.json", status)
+    service.bijsturen(CFG, date(2026, 11, 11), ververs=False,
+                      verwachting=lambda d, m: {"temp_min": 3, "temp_max": 6, "neerslag_mm": 9, "neerslagkans": 95,
+                                                "wind_kmh": 20})
+    plan = {s["datum"]: s for s in service.laad_plan()}
+    vr = plan["2026-11-13"]
+    assert vr["soort"] == "duur" and vr["omgeving"] == "buiten"
+    assert any(n.startswith("Let op het weer") for n in vr["notities"])

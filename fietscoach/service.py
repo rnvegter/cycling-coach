@@ -257,6 +257,7 @@ def laad_feedback() -> dict:
     fb.setdefault("rpe", {})
     fb.setdefault("readiness", {})
     fb.setdefault("ruil", {})
+    fb.setdefault("extra", {})
     return fb
 
 
@@ -321,6 +322,55 @@ def _extra_dagen(plan: list[dict], uitz: dict, vandaag: date, week: dict, vk: di
     plan.sort(key=lambda s: s["datum"])
 
 
+EXTRA_SOORTEN = ("duur", "herstel", "tempo", "sweetspot", "drempel", "vo2max")
+
+
+def _handmatige_extra(plan: list[dict], extra: dict, week: dict) -> None:
+    """Zelf toegevoegde trainingen op een dag zonder training. Week, fase en opbouw
+    komen van de dichtstbijzijnde training, zodat zwaarte en variant kloppen."""
+    if not plan:
+        return
+    bestaand = {s["datum"] for s in plan}
+    for d, e in sorted(extra.items()):
+        if d in bestaand:
+            continue
+        dt = date.fromisoformat(d)
+        maandag = (dt - timedelta(days=dt.weekday())).isoformat()
+        zondag = (dt + timedelta(days=6 - dt.weekday())).isoformat()
+        buren = [s for s in plan if maandag <= s["datum"] <= zondag] or plan
+        buur = min(buren, key=lambda s: abs((date.fromisoformat(s["datum"]) - dt).days))
+        soort = e.get("soort") if e.get("soort") in EXTRA_SOORTEN else "duur"
+        dag = planner.DAGEN[dt.weekday()]
+        waar = e.get("omgeving")
+        s = {"datum": d, "dag": dag, "week": buur["week"], "fase": buur["fase"], "focus": buur.get("focus"),
+             "herstelweek": buur["herstelweek"], "rol": "extra", "p": buur["p"], "pb": buur.get("pb", buur["p"]),
+             "extra": True, "handmatig": True, "variant": buur.get("variant", 0) + 2,
+             "variatie": buur.get("variatie", True), "basis_soort": soort, "basis_minuten": int(e["minuten"]),
+             "soort": soort, "minuten": int(e["minuten"]),
+             "buiten_toegestaan": waar != "binnen",
+             "status": "gepland", "notities": ["Extra training, zelf toegevoegd"]}
+        if waar in ("binnen", "buiten"):
+            s["omgeving"] = waar
+            s["omgeving_vast"] = True
+        plan.append(s)
+        bestaand.add(d)
+    plan.sort(key=lambda s: s["datum"])
+
+
+def _waarschuw_extra(plan: list[dict]) -> None:
+    """Een zelf toegevoegde intensieve training naast een andere intensieve: zeg het erbij."""
+    zwaar = planner.INTERVALSOORTEN | {"ftp_test", "lange_rit_tempo"}
+    per_dag = {s["datum"]: s for s in plan}
+    for s in plan:
+        if not s.get("handmatig") or s["status"] != "gepland" or s["soort"] not in zwaar:
+            continue
+        dt = date.fromisoformat(s["datum"])
+        for delta, naam in ((-1, "Gisteren"), (1, "Morgen")):
+            b = per_dag.get((dt + timedelta(days=delta)).isoformat())
+            if b and b["soort"] in zwaar and b["status"] in ("gepland", "gedaan"):
+                s["notities"].append(f"{naam} staat ook een intensieve training; twee dagen achter elkaar is zwaar")
+
+
 def afleiden(basis: list[dict], cfg: dict, status: dict, fb: dict, verwachting,
              vandaag: date, oud: list[dict]) -> tuple[list[dict], list[str]]:
     """Het hele schema opnieuw uit basis + invoer. Puur: zelfde invoer, zelfde uitkomst."""
@@ -333,6 +383,7 @@ def afleiden(basis: list[dict], cfg: dict, status: dict, fb: dict, verwachting,
     v = vandaag.isoformat()
 
     plan = adapt.basis_kopie(basis, vk)
+    _handmatige_extra(plan, fb.get("extra") or {}, week)
     # Lang geleden: die ritten halen we niet meer op, dus de status van toen bewaren.
     grens = (vandaag - timedelta(days=FROZEN_DAGEN)).isoformat()
     vorig = {x["datum"]: x for x in oud}
@@ -367,6 +418,8 @@ def afleiden(basis: list[dict], cfg: dict, status: dict, fb: dict, verwachting,
         else:
             s["ruil"] = k
             s["notities"].append("Zelf gekozen training")
+
+    _waarschuw_extra(plan)  # ook gisteren gereden telt mee
 
     niv = adapt.niveaus(plan, fb["rpe"])
     in_venster = {id(s) for s in venster}
@@ -705,6 +758,36 @@ def zet_ftp(cfg: dict, ftp: int, vandaag: date | None = None) -> str:
     status["ftp"] = int(ftp)
     _schrijf("status.json", status)
     return f"FTP in intervals.icu op {int(ftp)} W gezet."
+
+
+@onder_slot
+def zet_extra(datum: str, minuten: int | None, soort: str = "duur", omgeving: str = "auto",
+              vandaag: date | None = None) -> str | None:
+    """Extra training toevoegen (minuten) of weghalen (None). Geeft een foutmelding of None."""
+    vandaag = vandaag or date.today()
+    fb = laad_feedback()
+    if minuten is None:
+        fb["extra"].pop(datum, None)
+    else:
+        try:
+            d = date.fromisoformat(datum)
+        except ValueError:
+            return "geen geldige datum"
+        if not vandaag <= d <= vandaag + timedelta(days=HORIZON - 1):
+            return f"kies een dag vanaf vandaag tot {HORIZON} dagen vooruit"
+        if not 20 <= int(minuten) <= 360:
+            return "duur tussen 20 en 360 minuten"
+        bezet = next((s for s in laad_plan() if s["datum"] == datum and not s.get("handmatig")
+                      and s["soort"] != "rust" and s["status"] not in ("afwezig",)), None)
+        if bezet and datum not in fb["extra"]:
+            return (f"op die dag staat al {bezet['naam']}; kies daar 'Andere training' of pas de duur aan")
+        fb["extra"][datum] = {"minuten": int(minuten),
+                              "soort": soort if soort in EXTRA_SOORTEN else "duur",
+                              "omgeving": omgeving if omgeving in ("binnen", "buiten") else "auto"}
+    grens = (vandaag - timedelta(days=FROZEN_DAGEN)).isoformat()
+    fb["extra"] = {d: e for d, e in fb["extra"].items() if d >= grens}
+    bewaar_feedback(fb)
+    return None
 
 
 @onder_slot

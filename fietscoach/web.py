@@ -307,6 +307,27 @@ async def uitzondering(request: Request, achtergrond: BackgroundTasks):
     return _terug("/", _snel(achtergrond) or "Aangepast.")
 
 
+@app.post("/extra")
+async def extra(request: Request, achtergrond: BackgroundTasks):
+    f = await request.form()
+    datum = str(f.get("datum") or "")
+    if f.get("weg") is not None:
+        service.zet_extra(datum, None, vandaag=vandaag())
+        terug = str(f.get("terug") or "/")
+        _snel(achtergrond)
+        return _terug(terug if terug in ("/", "/schema") else "/", "Extra training weggehaald.")
+    try:
+        minuten = int(str(f.get("minuten") or "0"))
+    except ValueError:
+        minuten = 0
+    fout = service.zet_extra(datum, minuten, str(f.get("soort") or "duur"), str(f.get("omgeving") or "auto"),
+                             vandaag=vandaag())
+    if fout:
+        return _terug("/", f"Niet toegevoegd: {fout}.")
+    _snel(achtergrond)
+    return _terug("/", "Extra training toegevoegd; staat zo ook in intervals.icu.")
+
+
 @app.post("/ruil")
 async def ruil(request: Request, achtergrond: BackgroundTasks):
     f = await request.form()

@@ -65,6 +65,7 @@ def herplan_gemist(plan: list[dict], week: dict, vandaag: date) -> list[str]:
             continue
         doelen = [t for t in plan if v <= t["datum"] <= zo and t["status"] == "gepland"
                   and t["rol"] in ("duur", "herstel", "extra") and t["soort"] in ("duur", "herstel")
+                  and not t.get("handmatig")
                   and not t.get("herkomst") and beschikbaar(week, t["dag"]) >= 45]
         if not doelen:
             continue
@@ -202,7 +203,7 @@ def pas_weer_toe(venster: list[dict], verwachting, week: dict, vk: dict, wc: dic
         wk = s["week"]
         opties = []
         for t in venster:
-            if (t["week"] != wk or t is s or not t["buiten_toegestaan"]
+            if (t["week"] != wk or t is s or not t["buiten_toegestaan"] or t.get("handmatig")
                     or t["soort"] not in ("duur", "herstel")
                     or beschikbaar(week, t["dag"]) < 0.75 * s["minuten"]):
                 continue
@@ -225,6 +226,10 @@ def pas_weer_toe(venster: list[dict], verwachting, week: dict, vk: dict, wc: dic
 
     max_binnen = int(vk.get("max_binnen_minuten", 120))
     for s in venster:
+        if s.get("omgeving_vast"):  # zelf gekozen bij een extra training: niet overrulen
+            if s["omgeving"] == "buiten" and s.get("weer_slecht"):
+                s["notities"].append("Let op het weer: " + ", ".join(s["weer_slecht"]))
+            continue
         omg = standaard_omgeving(s, vk)
         if omg == "buiten" and s.get("weer_slecht"):
             omg = "binnen"
@@ -274,6 +279,7 @@ def _verplaats(s: dict, venster: list[dict], avail, reden: str) -> dict | None:
     nodig = 0.75 * s["minuten"] if lang else 45
     opties = [t for t in venster if t["week"] == s["week"] and t["datum"] > s["datum"]
               and t["soort"] in ("duur", "herstel") and t["rol"] in ("duur", "herstel", "extra")
+              and not t.get("handmatig")
               and avail(t) >= nodig]
     if not opties:
         return None
