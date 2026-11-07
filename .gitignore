@@ -1,0 +1,10 @@
+# nooit in git: je sleutel en je eigen data
+config.yaml
+data/
+*.tar.gz
+# lokaal
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/

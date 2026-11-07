@@ -1,0 +1,394 @@
+/* ============================================================
+   FIETSCOACH — stylesheet
+   ------------------------------------------------------------
+   Tokens en componenten overgenomen uit cycling-weather-matrix
+   (cwem, styles.css), zodat beide apps één familie zijn:
+   donker als standaard, bijna vierkante kaarten met een gekleurde
+   linkerrand, Barlow Condensed voor koppen, IBM Plex Mono voor
+   cijfers en labels.
+
+   Eén verschil in betekenis: waar cwem de zeven banden gebruikt
+   voor temperatuur, staan ze hier voor intensiteit. Frozen =
+   herstel, cool = duur, mild = tempo, warm = sweetspot, hot =
+   drempel, baking = VO2max. De schaal blijft data, geen decoratie.
+   ============================================================ */
+
+/* ---------- 1. Tokens (cwem) --------------------------------- */
+
+:root {
+  --t-frozen:  #2E6C9E;
+  --t-cold:    #4A8299;
+  --t-cool:    #6E9A93;
+  --t-mild:    #A3A075;
+  --t-warm:    #C9A03F;
+  --t-hot:     #DF8B26;
+  --t-baking:  #C85A2B;
+
+  --ramp: linear-gradient(90deg,
+    var(--t-frozen) 0%, var(--t-cold) 20%, var(--t-cool) 38%,
+    var(--t-mild) 54%, var(--t-warm) 70%, var(--t-hot) 86%, var(--t-baking) 100%);
+
+  --temp: var(--t-mild);
+  --temp-ink: var(--t-mild-ink);
+
+  --plus:    #D9A441;
+  --minus:   #6FA8C7;
+
+  --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --data: "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
+
+  --step--3: 0.62rem;
+  --step--2: 0.7rem;
+  --step--1: 0.78rem;
+  --step-0:  0.95rem;
+  --step-1:  1.15rem;
+  --step-2:  1.6rem;
+  --step-3:  2.4rem;
+
+  --sp-1: 0.25rem; --sp-2: 0.5rem;  --sp-3: 0.75rem;
+  --sp-4: 1rem;    --sp-5: 1.5rem;  --sp-6: 2rem;    --sp-7: 3rem;
+
+  --shell: 44rem;
+  --tap: 44px;
+  --edge: 3px;
+  --radius: 2px;
+  --ease: cubic-bezier(.2, .7, .3, 1);
+}
+
+:root,
+[data-theme="dark"] {
+  --bg:        #0E1A24;
+  --surface:   #16242F;
+  --surface-2: #1E303C;
+  --line:      #2A3E4B;
+  --text:      #E8EDEB;
+  --text-dim:  #8CA3AF;
+  --shadow: 0 1px 0 rgba(255,255,255,.04) inset;
+  --signal:    #F95C8F;
+  --t-frozen-ink: #5C9ACF;
+  --t-cold-ink: #649DB5;
+  --t-cool-ink: #729E97;
+  --t-mild-ink: #A3A075;
+  --t-warm-ink: #C9A03F;
+  --t-hot-ink: #DF8B26;
+  --t-baking-ink: #E67548;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --bg:        #E7EAE8;
+    --surface:   #FFFFFF;
+    --surface-2: #F2F5F4;
+    --line:      #D2D8D9;
+    --text:      #14202A;
+    --text-dim:  #56646F;
+    --shadow: none;
+    --signal:    #BE3265;
+    --t-frozen-ink: #2E6C9E;
+    --t-cold-ink: #3C7085;
+    --t-cool-ink: #4B706A;
+    --t-mild-ink: #6C6A48;
+    --t-warm-ink: #836413;
+    --t-hot-ink: #9B5900;
+    --t-baking-ink: #AE4A1D;
+  }
+}
+
+.t-frozen { --temp: var(--t-frozen); --temp-ink: var(--t-frozen-ink); }
+.t-cold   { --temp: var(--t-cold);   --temp-ink: var(--t-cold-ink); }
+.t-cool   { --temp: var(--t-cool);   --temp-ink: var(--t-cool-ink); }
+.t-mild   { --temp: var(--t-mild);   --temp-ink: var(--t-mild-ink); }
+.t-warm   { --temp: var(--t-warm);   --temp-ink: var(--t-warm-ink); }
+.t-hot    { --temp: var(--t-hot);    --temp-ink: var(--t-hot-ink); }
+.t-baking { --temp: var(--t-baking); --temp-ink: var(--t-baking-ink); }
+
+/* ---------- 2. Base (cwem) ----------------------------------- */
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--body);
+  font-size: var(--step-0);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.wx-shell { max-width: var(--shell); margin: 0 auto; padding: var(--sp-5) var(--sp-4) var(--sp-7); }
+:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+
+/* ---------- 3. Type roles (cwem) ----------------------------- */
+
+.wx-title {
+  font-family: var(--display); font-weight: 700; font-size: var(--step-3);
+  line-height: .98; letter-spacing: .01em; text-transform: uppercase; margin: 0 0 var(--sp-3);
+}
+.wx-heading {
+  font-family: var(--display); font-weight: 600; font-size: var(--step-1);
+  letter-spacing: .03em; text-transform: uppercase; margin: 0 0 var(--sp-2);
+}
+.wx-eyebrow {
+  font-family: var(--data); font-size: var(--step--1); font-weight: 500;
+  letter-spacing: .16em; text-transform: uppercase; color: var(--text-dim); margin: 0 0 var(--sp-2);
+}
+.wx-dim { color: var(--text-dim); }
+.wx-num { font-family: var(--data); font-variant-numeric: tabular-nums; }
+.wx-note { font-size: var(--step--1); color: var(--text-dim); margin: var(--sp-3) 0 0; }
+.wx-strip { height: 6px; background: var(--ramp); margin-top: var(--sp-4); }
+
+/* ---------- 4. Surfaces (cwem) ------------------------------- */
+
+.wx-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: var(--edge) solid var(--temp);
+  border-radius: var(--radius);
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-4);
+  box-shadow: var(--shadow);
+}
+.wx-card--flat { background: none; }
+.wx-card__head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--sp-3); margin-bottom: var(--sp-3);
+}
+
+/* ---------- 5. Controls (cwem) ------------------------------- */
+
+.wx-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--display); font-size: var(--step-0); font-weight: 600;
+  letter-spacing: .05em; text-transform: uppercase;
+  min-height: var(--tap); padding: 0 var(--sp-5);
+  border: 1px solid var(--text); border-radius: var(--radius);
+  background: none; color: var(--text); cursor: pointer; text-decoration: none;
+  transition: background .15s var(--ease), color .15s var(--ease);
+}
+.wx-btn:hover { background: var(--text); color: var(--bg); }
+.wx-btn--primary { background: var(--text); border-color: var(--text); color: var(--bg); }
+.wx-btn--primary:hover { opacity: .86; }
+.wx-btn--quiet { border-color: var(--line); color: var(--text-dim); padding: 0 var(--sp-4); }
+.wx-bar-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; margin-top: var(--sp-4); }
+.wx-bar-row form { margin: 0; }
+
+.wx-chip {
+  display: inline-flex; align-items: baseline; gap: var(--sp-2);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--sp-1) var(--sp-3); font-size: var(--step--1);
+  color: var(--text-dim); white-space: nowrap;
+}
+.wx-chip b { font-family: var(--data); font-weight: 600; color: var(--temp-ink); }
+
+.wx-choice { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.wx-choice .wx-chip, .wx-choice label.wx-chip {
+  min-height: var(--tap); min-width: var(--tap); align-items: center; justify-content: center;
+  cursor: pointer; background: none; font-family: var(--data); font-size: var(--step-0);
+}
+.wx-choice .wx-chip[aria-pressed="true"],
+.wx-choice input:checked + label.wx-chip { background: var(--text); border-color: var(--text); color: var(--bg); }
+.wx-choice input { position: absolute; opacity: 0; pointer-events: none; }
+.wx-choice input:focus-visible + label { outline: 2px solid var(--text); outline-offset: 2px; }
+.wx-choice button.wx-chip:hover { border-color: var(--text); color: var(--text); }
+
+.wx-tabs {
+  display: flex; flex-wrap: wrap; gap: var(--sp-2);
+  margin-bottom: var(--sp-5); border-bottom: 1px solid var(--line);
+}
+.wx-tab {
+  display: inline-flex; align-items: center;
+  font-family: var(--display); font-size: var(--step-1); font-weight: 600;
+  letter-spacing: .05em; text-transform: uppercase;
+  min-height: var(--tap); padding: 0 var(--sp-4);
+  border-bottom: var(--edge) solid transparent; margin-bottom: -1px;
+  color: var(--text-dim); text-decoration: none;
+}
+.wx-tab[aria-current="page"] { color: var(--text); border-bottom-color: var(--text); }
+@media (max-width: 30rem) {
+  .wx-tabs { gap: var(--sp-1); }
+  .wx-tab { font-size: var(--step-0); letter-spacing: .03em; padding: 0 var(--sp-2); }
+}
+
+.wx-field { display: block; margin-bottom: var(--sp-4); }
+.wx-label {
+  display: block; font-family: var(--data); font-size: var(--step--1); font-weight: 500;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--text-dim); margin-bottom: var(--sp-2);
+}
+.wx-input {
+  width: 100%; min-height: var(--tap); padding: 0 var(--sp-3);
+  font-family: var(--data); font-size: var(--step-0); color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius);
+}
+.wx-input:focus { outline: 2px solid var(--text); outline-offset: -1px; border-color: var(--text); }
+select.wx-input { font-family: var(--body); cursor: pointer; }
+input[type="checkbox"] { accent-color: var(--text); width: 1.2rem; height: 1.2rem; }
+
+.wx-grid { display: grid; gap: var(--sp-3); }
+.wx-grid--2 { grid-template-columns: repeat(2, 1fr); }
+.wx-grid--3 { grid-template-columns: repeat(3, 1fr); }
+/* Een native datumveld krimpt niet onder zijn eigen inhoud en duwt dan de
+   kolom (en de kaart) uit elkaar; zelfde oplossing als de ritrij in cwem. */
+.wx-grid > *, .wx-row > * { min-width: 0; }
+input[type="date"].wx-input { min-width: 0; max-width: 100%; }
+@media (max-width: 34rem) { .wx-grid--3 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 22rem) { .wx-grid--2, .wx-grid--3 { grid-template-columns: 1fr; } }
+.wx-row { display: flex; gap: var(--sp-2); align-items: flex-end; }
+.wx-row > .wx-grow { flex: 1; }
+
+.wx-status {
+  border-left: var(--edge) solid var(--temp); padding: var(--sp-2) 0 var(--sp-2) var(--sp-4);
+  margin: 0 0 var(--sp-4); font-size: var(--step--1); color: var(--text-dim);
+}
+.wx-status--err { border-left-color: var(--signal); color: var(--signal); }
+
+.wx-more { margin-top: var(--sp-4); border-top: 1px solid var(--line); padding-top: var(--sp-3); }
+.wx-more > summary {
+  cursor: pointer; font-family: var(--data); font-size: var(--step--1); font-weight: 500;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--text-dim);
+  min-height: var(--tap); display: flex; align-items: center;
+}
+.wx-more > summary:hover, .wx-more[open] > summary { color: var(--text); }
+
+.wx-brand { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-5); }
+.wx-brand > div { min-width: 0; }
+.wx-brand .wx-eyebrow { margin-bottom: 2px; }
+.wx-brand .wx-title { margin: 0; }
+.wx-logo { width: 3.1rem; height: 3.1rem; flex: 0 0 auto; display: block; }
+@media (max-width: 26rem) { .wx-logo { width: 2.5rem; height: 2.5rem; } }
+
+.wx-foot {
+  margin-top: var(--sp-7); padding-top: var(--sp-4); border-top: 1px solid var(--line);
+  font-size: var(--step--1); color: var(--text-dim);
+}
+.wx-foot a { color: inherit; }
+
+/* ---------- 6. Fietscoach ------------------------------------ */
+/* Alles hieronder is nieuw, maar gebouwd uit dezelfde tokens. */
+
+/* Tegels: de vijf getallen uit intervals.icu. */
+.fc-tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--line);
+            border: 1px solid var(--line); margin-bottom: var(--sp-4); }
+.fc-tile { background: var(--surface); padding: var(--sp-2) var(--sp-1); text-align: center; }
+.fc-tile b { display: block; font-family: var(--data); font-weight: 600; font-size: var(--step-1);
+             font-variant-numeric: tabular-nums; }
+.fc-tile span { font-family: var(--data); font-size: var(--step--3); letter-spacing: .1em;
+                text-transform: uppercase; color: var(--text-dim); }
+.fc-tile--neg b { color: var(--signal); }
+
+/* De training van vandaag: de naam groot, in de kleur van de zone. */
+.fc-today__name {
+  font-family: var(--display); font-weight: 700; font-size: var(--step-2); line-height: 1;
+  text-transform: uppercase; letter-spacing: .01em; color: var(--temp-ink); margin: 0 0 var(--sp-2);
+}
+.fc-meta { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+
+.fc-profiel { display: block; width: 100%; height: 64px; background: var(--surface-2); }
+.fc-profiel--mini { height: 22px; }
+.fc-schaal { display: flex; justify-content: space-between; font-family: var(--data);
+             font-size: var(--step--3); color: var(--text-dim); margin-top: var(--sp-1); }
+
+.fc-notes { margin: var(--sp-3) 0 0; padding: 0; list-style: none; font-size: var(--step--1); }
+.fc-notes li { padding: var(--sp-1) 0 var(--sp-1) var(--sp-3); border-left: 1px solid var(--line);
+               color: var(--text-dim); }
+.fc-notes li.is-weer { border-left-color: var(--signal); color: var(--text); }
+
+pre.fc-opbouw { white-space: pre-wrap; font-family: var(--data); font-size: var(--step--1);
+                color: var(--text-dim); background: var(--surface-2); padding: var(--sp-3); margin: 0; }
+
+/* Omgeving: neutraal, want binnen/buiten is geen intensiteit. */
+.fc-env { font-family: var(--data); font-size: var(--step--2); letter-spacing: .12em;
+          text-transform: uppercase; border: 1px solid var(--line); padding: 1px var(--sp-2);
+          color: var(--text-dim); white-space: nowrap; }
+.fc-env--binnen { border-color: var(--text-dim); color: var(--text); }
+
+/* Weeklijst: één rij per dag, de rand in de kleur van de training. */
+.fc-week { margin: 0; padding: 0; list-style: none; }
+.fc-day { display: grid; grid-template-columns: 4.2rem 1fr auto; gap: var(--sp-1) var(--sp-3);
+          align-items: baseline; padding: var(--sp-2) 0 var(--sp-2) var(--sp-3);
+          border-top: 1px solid var(--line); box-shadow: inset var(--edge) 0 0 var(--temp); }
+.fc-day:first-child { border-top: 0; }
+.fc-day__when { font-family: var(--data); font-size: var(--step--1); color: var(--text-dim);
+                text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+.fc-day__name { font-weight: 500; min-width: 0; }
+.fc-day__sub { grid-column: 2 / -1; font-size: var(--step--1); color: var(--text-dim); }
+.fc-day.is-today { background: var(--surface-2); }
+.fc-day.is-gedaan .fc-day__name::before { content: "✓ "; color: var(--temp-ink); }
+.fc-day.is-gemist .fc-day__name, .fc-day.is-vervallen .fc-day__name { color: var(--text-dim); text-decoration: line-through; }
+.fc-day.is-rust { box-shadow: none; }
+.fc-day details > summary { cursor: pointer; color: var(--text-dim); font-size: var(--step--1); list-style: none; }
+.fc-day details > summary::-webkit-details-marker { display: none; }
+.fc-day details[open] { margin-top: var(--sp-2); }
+
+.fc-score { font-family: var(--data); font-size: var(--step--1); white-space: nowrap; }
+.fc-score b { color: var(--temp-ink); }
+
+/* Weekkaarten in het schema. */
+details.fc-wk { background: var(--surface); border: 1px solid var(--line);
+                border-left: var(--edge) solid var(--temp); margin-bottom: var(--sp-3); }
+details.fc-wk > summary { list-style: none; cursor: pointer; padding: var(--sp-3) var(--sp-4);
+                          display: flex; justify-content: space-between; align-items: baseline; gap: var(--sp-3); }
+details.fc-wk > summary::-webkit-details-marker { display: none; }
+details.fc-wk > summary .wx-heading { margin: 0; white-space: nowrap; }
+details.fc-wk > summary .wx-eyebrow { text-align: right; }
+.fc-plain { border-left-color: var(--line); }
+details.fc-wk > .fc-week { padding: 0 var(--sp-4) var(--sp-2); }
+.fc-load { height: 4px; background: var(--surface-2); margin: 0 var(--sp-4) var(--sp-3); }
+.fc-load > i { display: block; height: 100%; background: var(--temp); }
+
+/* RPE-keuze: tien vakjes, gekleurd van licht naar zwaar langs de schaal. */
+.fc-rpe { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; margin-top: var(--sp-2); }
+.fc-rpe button { min-height: var(--tap); border: 1px solid var(--line); border-bottom: var(--edge) solid var(--temp);
+                 background: none; color: var(--text); font-family: var(--data); font-size: var(--step-0);
+                 cursor: pointer; border-radius: var(--radius); padding: 0; }
+.fc-rpe button:hover { background: var(--temp); color: #0E1A24; }
+.fc-rpe-legend { display: flex; justify-content: space-between; font-family: var(--data);
+                 font-size: var(--step--3); color: var(--text-dim); margin-top: var(--sp-1);
+                 letter-spacing: .08em; text-transform: uppercase; }
+.fc-fb + .fc-fb { border-top: 1px solid var(--line); margin-top: var(--sp-3); padding-top: var(--sp-3); }
+
+.fc-legend { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-3); font-family: var(--data);
+             font-size: var(--step--3); color: var(--text-dim); letter-spacing: .08em; text-transform: uppercase;
+             margin-top: var(--sp-2); }
+.fc-legend i { display: inline-block; width: 10px; height: 10px; background: var(--temp); margin-right: 4px;
+               vertical-align: -1px; }
+
+
+.fc-weekdays td { padding: var(--sp-1) var(--sp-2) var(--sp-1) 0; border-top: 1px solid var(--line); }
+.fc-weekdays td:first-child { font-family: var(--data); text-transform: uppercase; color: var(--text-dim);
+                              width: 3rem; letter-spacing: .08em; }
+.fc-weekdays .wx-input { max-width: 7rem; }
+.fc-check { display: inline-flex; gap: var(--sp-2); align-items: center; font-size: var(--step--1);
+            color: var(--text-dim); min-height: var(--tap); }
+
+.wx-hidden { display: none !important; }
+
+/* ---------- 7. Schuifjes (cwem .wx-slider) ------------------- */
+/* Zelfde knop als in cwem: een smalle staande streep. De baan is hier geen
+   temperatuurschaal maar tijd, dus neutraal: gevuld tot de knop. */
+.wx-slider {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: var(--tap); background: none; margin: 0; display: block; cursor: ew-resize;
+  --pct: 0%;
+}
+.wx-slider::-webkit-slider-runnable-track {
+  height: 6px; border-radius: var(--radius);
+  background: linear-gradient(90deg, var(--text-dim) var(--pct), var(--surface-2) var(--pct));
+}
+.wx-slider::-moz-range-track { height: 6px; background: var(--surface-2); border-radius: var(--radius); }
+.wx-slider::-moz-range-progress { height: 6px; background: var(--text-dim); }
+.wx-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 6px; height: 30px; margin-top: -12px; background: var(--text); border: 0; border-radius: 1px;
+}
+.wx-slider::-moz-range-thumb { width: 6px; height: 30px; background: var(--text); border: 0; border-radius: 1px; }
+
+.fc-slide { display: grid; grid-template-columns: 2.2rem 1fr 3.4rem auto; gap: var(--sp-3);
+            align-items: center; border-top: 1px solid var(--line); }
+.fc-slide:first-child { border-top: 0; }
+.fc-slide__dag { font-family: var(--data); text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim); }
+.fc-slide__tijd { font-family: var(--data); font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.fc-slide__tijd.is-rust { color: var(--text-dim); font-weight: 400; }
+.fc-slide__buiten { min-height: var(--tap); }
+@media (max-width: 24rem) { .fc-slide__buiten { font-size: 0; gap: 0; } }  /* alleen het vinkje */
+.fc-weektotaal { margin: var(--sp-3) 0 0; text-align: right; }

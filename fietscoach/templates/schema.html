@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "_dag.html" import dag %}
+{% block inhoud %}
+{% if not weken %}
+<div class="wx-card t-mild"><h2 class="wx-heading">Nog geen schema</h2>
+  <a class="wx-btn wx-btn--primary" href="/instellingen">Naar instellingen</a></div>
+{% else %}
+<p class="wx-eyebrow">{{ cfg.doel.type|upper }} · {% for b in cfg.doel.blokken or [] %}{{ focusnaam.get(b.focus, b.focus) }} {{ b.weken }} wk{% if not loop.last %} → {% endif %}{% else %}{{ focusnaam.get(cfg.doel.focus, 'Gemengd') }}{% endfor %}{% if cfg.doel.evenement %} · tocht {{ datumlabel(cfg.doel.evenement|string, true) }}{% endif %}</p>
+<div class="fc-legend">{% for k, n in zonelegenda %}<span class="t-{{ k }}"><i></i>{{ n }}</span>{% endfor %}</div>
+<div class="wx-strip" style="margin-bottom:var(--sp-5)"></div>
+
+{% for wk, ss in weken %}
+{% set uren = (ss|sum(attribute='duur')) %}
+{% set zwaarst = ss|selectattr('soort', 'in', ['vo2max','drempel','sweetspot','tempo','openers'])|list %}
+<details class="fc-wk {{ 't-frozen' if ss[0].herstelweek else (klasse(zwaarst[0]) if zwaarst else 't-cool') }}" {% if huidige and huidige <= wk <= huidige + 1 %}open{% endif %}>
+  <summary>
+    <h2 class="wx-heading">Week {{ wk }}</h2>
+    <span class="wx-eyebrow" style="margin:0">{{ focusnaam.get(ss[0].focus, ss[0].fase) }}{% if ss[0].focus == 'gemengd' %} · {{ ss[0].fase }}{% endif %}{% if ss[0].herstelweek %} · herstel{% endif %} · {{ '%.1f'|format(uren / 60) }} u</span>
+  </summary>
+  <div class="fc-load"><i style="width:{{ (100 * uren / maxuren)|round }}%"></i></div>
+  <ul class="fc-week">{% for s in ss %}{{ dag(s, vandaag, rpe, '/schema') }}{% endfor %}</ul>
+</details>
+{% endfor %}
+
+<section class="wx-card wx-card--flat t-baking" style="margin-top:var(--sp-5)">
+  <h2 class="wx-heading">Opnieuw opbouwen</h2>
+  <p class="wx-note" style="margin-top:0">Maakt het schema vanaf vandaag opnieuw met je huidige instellingen. Gereden trainingen, scores en RPE blijven staan.</p>
+  <form method="post" action="/genereer" onsubmit="return confirm('Schema vanaf vandaag opnieuw opbouwen?')" class="wx-bar-row">
+    <button class="wx-btn">Nieuw schema</button></form>
+</section>
+{% endif %}
+{% endblock %}

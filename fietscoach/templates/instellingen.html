@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block inhoud %}
+{% set d = cfg.doel or {} %}
+{% set vk = cfg.voorkeuren or {} %}
+{% set w = cfg.weer or {} %}
+<form method="post" action="/instellingen">
+
+<section class="wx-card t-warm">
+  <p class="wx-eyebrow">Doel</p>
+  <h2 class="wx-heading">Waar train je voor?</h2>
+  <div class="wx-grid wx-grid--3">
+    <div><label class="wx-label" for="type">Doel</label>
+      <select class="wx-input" id="type" name="type">
+        {% for k, n in [('ftp','FTP omhoog'),('duur','Duurvermogen'),('tocht','Een tocht')] %}
+        <option value="{{ k }}" {% if d.type == k %}selected{% endif %}>{{ n }}</option>{% endfor %}
+      </select></div>
+    <div><label class="wx-label" for="startdatum">Start</label>
+      <input class="wx-input" type="date" id="startdatum" name="startdatum" value="{{ d.startdatum or vandaag }}" required></div>
+    <div><label class="wx-label" for="evenement">Tochtdatum</label>
+      <input class="wx-input" type="date" id="evenement" name="evenement" value="{{ d.evenement or '' }}"></div>
+  </div>
+  <p class="wx-note">Met een tochtdatum loopt het schema tot die week, met een taper in de laatste week; het laatste blok rekt of krimpt mee.</p>
+</section>
+
+<section class="wx-card t-mild">
+  <p class="wx-eyebrow">Focus</p>
+  <h2 class="wx-heading">Blokken</h2>
+  <p class="wx-note" style="margin-top:0">Eén tot drie blokken achter elkaar. Elke vierde week is een herstelweek.</p>
+  {% for b in blokken %}
+  <div class="wx-row" style="margin-top:var(--sp-3)">
+    <div class="wx-grow"><label class="wx-label" for="focus{{ loop.index0 }}">Blok {{ loop.index }}</label>
+      <select class="wx-input" id="focus{{ loop.index0 }}" name="focus{{ loop.index0 }}">
+        <option value="">—</option>
+        {% for f in focussen %}<option value="{{ f }}" {% if b.focus == f %}selected{% endif %}>{{ focusnaam[f] }}</option>{% endfor %}
+      </select></div>
+    <div style="width:6rem"><label class="wx-label" for="weken{{ loop.index0 }}">Weken</label>
+      <input class="wx-input" type="number" min="1" max="52" id="weken{{ loop.index0 }}" name="weken{{ loop.index0 }}" value="{{ b.weken }}"></div>
+  </div>
+  {% endfor %}
+  <ul class="fc-notes">
+    <li><b>Gemengd</b> — wisselt per fase: sweetspot/tempo → drempel/VO2max.</li>
+    <li><b>Sweetspot</b> — alle doordeweekse sessies sweetspot, 3×10 → 2×20 min.</li>
+    <li><b>Zone 2</b> — alleen duur; later in het blok tempo in de lange rit.</li>
+    <li><b>Gepolariseerd</b> — één korte, harde VO2max-sessie, verder zone 2.</li>
+  </ul>
+</section>
+
+<section class="wx-card t-cool">
+  <p class="wx-eyebrow">Beschikbaarheid</p>
+  <h2 class="wx-heading">Een gewone week</h2>
+  <div class="fc-sliders">
+    {% for dag in dagen %}{% set x = cfg.week.get(dag) or {} %}{% set m = x.minuten or 0 %}
+    <div class="fc-slide">
+      <label class="fc-slide__dag" for="min_{{ dag }}">{{ dagnaam[dag] }}</label>
+      <input class="wx-slider" type="range" min="0" max="360" step="15" id="min_{{ dag }}" name="min_{{ dag }}"
+             value="{{ m }}" style="--pct:{{ (m / 360 * 100)|round(1) }}%" aria-valuetext="{{ m }} minuten">
+      <output class="fc-slide__tijd {% if m < 30 %}is-rust{% endif %}" for="min_{{ dag }}">{% if m < 30 %}rust{% else %}{{ m // 60 }}u{{ '%02d'|format(m % 60) }}{% endif %}</output>
+      <label class="fc-check fc-slide__buiten"><input type="checkbox" name="buiten_{{ dag }}" value="1" {% if x.buiten %}checked{% endif %}> buiten</label>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="wx-eyebrow fc-weektotaal" id="weektotaal"></p>
+  <p class="wx-note">Per kwartier, tot 6 uur. Minder dan 30 minuten is een rustdag. Eén keer anders? Dat zet je op het scherm Vandaag.</p>
+</section>
+
+<section class="wx-card t-frozen">
+  <p class="wx-eyebrow">Voorkeuren</p>
+  <div class="wx-grid wx-grid--2">
+    <div><label class="wx-label" for="max_kwaliteit">Intervallen per week</label>
+      <select class="wx-input" id="max_kwaliteit" name="max_kwaliteit">
+        {% for n in [1, 2, 3] %}<option {% if (vk.max_kwaliteit_per_week or 2) == n %}selected{% endif %}>{{ n }}</option>{% endfor %}
+      </select></div>
+    <div><label class="wx-label" for="max_binnen">Max. minuten binnen</label>
+      <input class="wx-input" type="number" id="max_binnen" name="max_binnen" min="30" max="300" step="15" value="{{ vk.max_binnen_minuten or 120 }}"></div>
+  </div>
+  <label class="fc-check"><input type="checkbox" name="intervallen_binnen" value="1" {% if vk.intervallen_binnen is not defined or vk.intervallen_binnen %}checked{% endif %}> Intervallen altijd binnen (Kickr, ERG)</label><br>
+  <label class="fc-check"><input type="checkbox" name="variatie" value="1" {% if vk.variatie is not defined or vk.variatie %}checked{% endif %}> Afwisselende trainingsvormen (zie Bibliotheek)</label><br>
+  <label class="fc-check"><input type="checkbox" name="ftp_test" value="1" {% if vk.ftp_test is not defined or vk.ftp_test %}checked{% endif %}> FTP-test aan het eind van elke herstelweek</label>
+</section>
+
+<section class="wx-card t-cold">
+  <p class="wx-eyebrow">Weer</p>
+  <h2 class="wx-heading">Wanneer naar Zwift?</h2>
+  <div class="wx-grid wx-grid--2">
+    <div><label class="wx-label" for="mm">Regen meer dan (mm)</label>
+      <input class="wx-input" type="number" step="0.5" min="0" id="mm" name="max_neerslag_mm" value="{{ w.max_neerslag_mm if w.max_neerslag_mm is defined else 2 }}"></div>
+    <div><label class="wx-label" for="kans">Regenkans boven (%)</label>
+      <input class="wx-input" type="number" min="0" max="100" id="kans" name="max_neerslagkans" value="{{ w.max_neerslagkans if w.max_neerslagkans is defined else 60 }}"></div>
+    <div><label class="wx-label" for="wind">Wind boven (km/u)</label>
+      <input class="wx-input" type="number" min="0" id="wind" name="max_wind_kmh" value="{{ w.max_wind_kmh if w.max_wind_kmh is defined else 35 }}"></div>
+    <div><label class="wx-label" for="temp">Minimaal onder (°C)</label>
+      <input class="wx-input" type="number" step="0.5" id="temp" name="min_temp" value="{{ w.min_temp if w.min_temp is defined else 0 }}"></div>
+  </div>
+</section>
+
+<button class="wx-btn wx-btn--primary" style="width:100%">Opslaan en schema opnieuw opbouwen</button>
+<p class="wx-note">Gereden trainingen, scores en RPE blijven staan; vanaf vandaag komt het nieuwe schema.</p>
+</form>
+<script>
+/* Schuifjes: tijd ernaast bijwerken, de baan vullen tot de knop, en het weektotaal. */
+(function () {
+  const sliders = document.querySelectorAll('.fc-slide .wx-slider');
+  const totaal = document.getElementById('weektotaal');
+  const tijd = m => m < 30 ? 'rust' : Math.floor(m / 60) + 'u' + String(m % 60).padStart(2, '0');
+  function teken() {
+    let som = 0, dagen = 0;
+    sliders.forEach(s => {
+      const m = +s.value, out = s.parentElement.querySelector('output');
+      out.textContent = tijd(m);
+      out.classList.toggle('is-rust', m < 30);
+      s.style.setProperty('--pct', (m / +s.max * 100) + '%');
+      s.setAttribute('aria-valuetext', m + ' minuten');
+      if (m >= 30) { som += m; dagen++; }
+    });
+    totaal.textContent = 'Totaal ' + Math.floor(som / 60) + 'u' + String(som % 60).padStart(2, '0') + ' · ' + dagen + ' dagen';
+  }
+  sliders.forEach(s => s.addEventListener('input', teken));
+  teken();
+})();
+</script>
+{% endblock %}

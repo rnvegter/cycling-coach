@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block inhoud %}
+<p class="wx-note" style="margin-top:0">Alle trainingsvormen. Het schema wisselt ze per week af en past ze aan op je tijd en je progressie. Hier zie je ze op
+  {% for m in [45, 60, 90] %}<a href="/bibliotheek?minuten={{ m }}" class="fc-env {% if m == minuten %}fc-env--binnen{% endif %}" style="text-decoration:none">{{ m }} min</a> {% endfor %}
+  (lange ritten op 2u30).</p>
+<div class="fc-legend">{% for k, n in zonelegenda %}<span class="t-{{ k }}"><i></i>{{ n }}</span>{% endfor %}</div>
+<div class="wx-strip" style="margin-bottom:var(--sp-5)"></div>
+
+{% for soort, trainingen in groepen %}
+<h2 class="wx-heading" style="margin-top:var(--sp-5)">{{ soortnaam({'soort': soort}) }} <span class="wx-dim wx-num" style="font-size:var(--step--1)">· {{ trainingen|length }}</span></h2>
+{% for t in trainingen %}
+<details class="fc-wk {{ klasse({'soort': soort}) }}">
+  <summary><span class="fc-day__name">{{ t.naam }}</span><span class="wx-eyebrow" style="margin:0">{{ t.minuten|round|int }} min</span></summary>
+  <div style="padding:0 var(--sp-4) var(--sp-4)">
+    {{ profiel_t(t) }}
+    <p class="wx-note">{{ t.toelichting }}</p>
+    <details class="wx-more"><summary>Opbouw</summary><pre class="fc-opbouw">{{ t.beschrijving() }}</pre></details>
+  </div>
+</details>
+{% endfor %}
+{% endfor %}
+{% endblock %}

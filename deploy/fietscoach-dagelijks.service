@@ -1,0 +1,14 @@
+[Unit]
+Description=Fietscoach dagelijks bijsturen en synchroniseren
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=fietscoach
+Group=fietscoach
+WorkingDirectory=/opt/fietscoach
+Environment=FIETSCOACH_CONFIG=/etc/fietscoach/config.yaml
+Environment=FIETSCOACH_DATA=/var/lib/fietscoach
+ExecStart=/opt/fietscoach-venv/bin/python -m fietscoach.cli dagelijks
+NoNewPrivileges=yes

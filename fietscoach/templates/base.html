@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fietscoach</title>
+<meta name="color-scheme" content="dark light">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/styles.css">
+{# Het merk: dezelfde zeven banden als het cwem-logo, maar als oplopende
+   ramp-test in plaats van een meter. Familie, geen kopie. #}
+{% set banden = ['frozen','cold','cool','mild','warm','hot','baking'] %}
+<link rel="icon" href="data:image/svg+xml,{{ ('<svg xmlns=&quot;http://www.w3.org/2000/svg&quot; viewBox=&quot;0 0 44 44&quot;><rect width=&quot;44&quot; height=&quot;44&quot; rx=&quot;7&quot; fill=&quot;#0E1A24&quot;/><g fill=&quot;#DF8B26&quot;><rect x=&quot;8&quot; y=&quot;26&quot; width=&quot;8&quot; height=&quot;10&quot;/><rect x=&quot;18&quot; y=&quot;18&quot; width=&quot;8&quot; height=&quot;18&quot;/><rect x=&quot;28&quot; y=&quot;9&quot; width=&quot;8&quot; height=&quot;27&quot;/></g></svg>')|replace('&quot;','%22')|replace('#','%23')|replace('<','%3C')|replace('>','%3E') }}">
+</head>
+<body>
+<div class="wx-shell">
+
+<header class="wx-brand">
+  <svg class="wx-logo" viewBox="0 0 44 44" role="img" aria-label="Fietscoach">
+    {% for b in banden %}
+    <rect x="{{ 3 + loop.index0 * 5.6 }}" y="{{ 38 - (8 + loop.index0 * 4.4) }}" width="4.4" height="{{ 8 + loop.index0 * 4.4 }}" style="fill:var(--t-{{ b }})"/>
+    {% endfor %}
+    <rect x="2" y="40" width="40" height="1.6" style="fill:var(--text)"/>
+  </svg>
+  <div>
+    <p class="wx-eyebrow">Trainingsschema</p>
+    <h1 class="wx-title">Fietscoach</h1>
+  </div>
+</header>
+
+<nav class="wx-tabs">
+  <a class="wx-tab" href="/" {% if tab == 'vandaag' %}aria-current="page"{% endif %}>Vandaag</a>
+  <a class="wx-tab" href="/schema" {% if tab == 'schema' %}aria-current="page"{% endif %}>Schema</a>
+  <a class="wx-tab" href="/bibliotheek" {% if tab == 'bibliotheek' %}aria-current="page"{% endif %}>Bibliotheek</a>
+  <a class="wx-tab" href="/instellingen" {% if tab == 'instellingen' %}aria-current="page"{% endif %}>Instellingen</a>
+</nav>
+
+{% if msg %}<p class="wx-status {% if 'mislukt' in msg or 'Niet ' in msg or 'Kon ' in msg %}wx-status--err{% else %}t-cool{% endif %}">{{ msg }}</p>{% endif %}
+
+{% block inhoud %}{% endblock %}
+
+<footer class="wx-foot">
+  {% if status.bijgestuurd %}Bijgestuurd {{ status.bijgestuurd }}{% endif %}
+  {% if status.gesynct %} · naar intervals.icu {{ status.gesynct }}{% endif %}
+  · weer via Open-Meteo
+</footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,24 @@
+{# Eén dag in een weeklijst. #}
+{% macro dag(s, vandaag, rpe, terug='/') %}
+<li class="fc-day {{ klasse(s) }} is-{{ s.status }} {% if s.soort == 'rust' %}is-rust{% endif %} {% if s.datum == vandaag %}is-today{% endif %}">
+  <span class="fc-day__when">{{ datumlabel(s.datum) }}</span>
+  <span class="fc-day__name">{{ s.naam }}</span>
+  <span>
+    {% if s.score %}<span class="fc-score">score <b>{{ s.score.totaal }}</b></span>
+    {% elif s.soort != 'rust' %}<span class="fc-env {% if s.omgeving == 'binnen' %}fc-env--binnen{% endif %}">{{ 'Zwift' if s.omgeving == 'binnen' else 'Buiten' }}</span>{% endif %}
+  </span>
+  {% if s.soort != 'rust' %}
+  <div class="fc-day__sub">
+    {% if s.status == 'gemist' %}Gemist{% if s.verschoven %} · doorgeschoven{% endif %}
+    {% elif s.status == 'vervallen' %}Vervallen
+    {% elif s.score %}Duur {{ s.score.duur }}{% if s.score.intensiteit is defined %} · intensiteit {{ s.score.intensiteit }}{% endif %}{% if rpe.get(s.datum) %} · RPE {{ rpe[s.datum] }}{% endif %}
+    {% else %}{{ s.duur }} min{% if s.weer %} · {{ s.weer }}{% endif %}{% endif %}
+    {% if s.notities and s.status == 'gepland' %}<br>→ {{ s.notities|join(' · ') }}{% endif %}
+    <details><summary>Opbouw ▸</summary>
+      {{ profiel(s) }}
+      <pre class="fc-opbouw">{{ s.beschrijving }}</pre>
+    </details>
+  </div>
+  {% endif %}
+</li>
+{% endmacro %}

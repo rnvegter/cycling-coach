@@ -1,0 +1,50 @@
+# Fietscoach – instellingen. Kopieer naar config.yaml en pas aan.
+
+intervals:
+  athlete_id: "0"            # "0" = de atleet van deze sleutel; of je eigen id, bv. "i123456"
+  api_key: "PLAK-HIER-JE-SLEUTEL"   # intervals.icu → Settings → Developer Settings
+                             # (of zet INTERVALS_API_KEY als omgevingsvariabele)
+
+locatie:
+  naam: Haarlem
+  lat: 52.387
+  lon: 4.646
+
+doel:
+  type: ftp                  # ftp | duur | tocht (tocht = laatste week taper)
+  startdatum: 2026-11-09     # wordt afgerond naar de maandag van die week
+  weken: 12
+  # Focus van de doordeweekse sessies:
+  #   gemengd       – wisselt per fase: sweetspot/tempo → drempel/VO2max
+  #   sweetspot     – alleen sweetspot, oplopend van 3×10 naar 2×20 min
+  #   zone2         – alleen duurvermogen (later in het blok wat tempo in de lange rit)
+  #   gepolariseerd – één korte harde VO2max-sessie, verder zone 2
+  focus: gemengd
+  # Of focussen achter elkaar in blokken (dan telt 'weken' hierboven niet):
+  blokken:
+    - {focus: zone2, weken: 4}
+    - {focus: sweetspot, weken: 8}
+
+# Beschikbare tijd per dag in minuten. buiten: true = buiten fietsen mag die dag.
+# Dagen met minder dan 30 minuten zijn rustdagen.
+week:
+  ma: {minuten: 0}
+  di: {minuten: 60, buiten: false}
+  wo: {minuten: 0}
+  do: {minuten: 60, buiten: false}
+  vr: {minuten: 0}
+  za: {minuten: 180, buiten: true}
+  zo: {minuten: 90, buiten: true}
+
+voorkeuren:
+  max_kwaliteit_per_week: 2  # aantal intervaltrainingen per week
+  intervallen_binnen: true   # intervallen altijd op de Kickr (ERG)
+  ftp_test: true             # ramp test aan het eind van elke herstelweek
+  max_binnen_minuten: 120    # lange rit die naar binnen moet wordt hierop afgekapt
+
+# Wanneer gaat een buitenrit naar Zwift?
+weer:
+  max_neerslag_mm: 2.0
+  max_neerslagkans: 60
+  max_wind_kmh: 35           # max. gemiddelde wind op 10 m hoogte (≈ 5 Bft)
+  min_temp: 0                # onder nul: kans op gladheid

@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% from "_dag.html" import dag %}
+{% block inhoud %}
+
+{# --- De vijf getallen uit intervals.icu ------------------------------ #}
+<div class="fc-tiles">
+  <div class="fc-tile"><b>{{ status.ftp or '–' }}</b><span>FTP</span></div>
+  <div class="fc-tile"><b>{{ status.eftp or '–' }}</b><span>eFTP</span></div>
+  <div class="fc-tile"><b>{{ status.ctl if status.ctl is not none and status.ctl is defined else '–' }}</b><span>Fitheid</span></div>
+  <div class="fc-tile"><b>{{ status.atl if status.atl is not none and status.atl is defined else '–' }}</b><span>Vermoeid</span></div>
+  <div class="fc-tile {% if status.vorm is defined and status.vorm is not none and status.vorm < -20 %}fc-tile--neg{% endif %}">
+    <b>{{ '%+d'|format(status.vorm) if status.vorm is defined and status.vorm is not none else '–' }}</b><span>Vorm</span></div>
+</div>
+{% if status.eftp and status.ftp and status.eftp > status.ftp * 1.03 %}
+<p class="wx-status t-warm">Je eFTP ({{ status.eftp }} W) ligt duidelijk boven je FTP ({{ status.ftp }} W). Overweeg je FTP in intervals.icu op te hogen.</p>
+{% endif %}
+
+{# --- Readiness, zoals JOIN: hoe voel je je vandaag? ------------------- #}
+{% if not plan %}
+<div class="wx-card t-mild">
+  <h2 class="wx-heading">Nog geen schema</h2>
+  <p class="wx-dim">Vul je doel en beschikbaarheid in en maak een schema.</p>
+  <a class="wx-btn wx-btn--primary" href="/instellingen">Naar instellingen</a>
+</div>
+{% else %}
+
+{% if not readiness %}
+<form class="wx-card t-cool" method="post" action="/readiness">
+  <p class="wx-eyebrow">Readiness</p>
+  <h2 class="wx-heading">Hoe voel je je vandaag?</h2>
+  <span class="wx-label">Benen · 1 zwaar en stijf – 5 fris</span>
+  <div class="wx-choice">
+    {% for n in range(1, 6) %}<input type="radio" name="benen" id="b{{ n }}" value="{{ n }}" required {% if n == 4 %}checked{% endif %}><label class="wx-chip" for="b{{ n }}">{{ n }}</label>{% endfor %}
+  </div>
+  <span class="wx-label" style="margin-top:var(--sp-3)">Energie · 1 leeg – 5 vol</span>
+  <div class="wx-choice">
+    {% for n in range(1, 6) %}<input type="radio" name="energie" id="e{{ n }}" value="{{ n }}" required {% if n == 4 %}checked{% endif %}><label class="wx-chip" for="e{{ n }}">{{ n }}</label>{% endfor %}
+  </div>
+  <div class="wx-bar-row"><button class="wx-btn wx-btn--primary">Opslaan</button>
+    <span class="wx-note" style="margin:0">Bij 3 of lager wordt vandaag lichter; bij 2 of lager ook morgen.</span></div>
+</form>
+{% endif %}
+
+{# --- De training van vandaag ----------------------------------------- #}
+{% set t = vandaag_s if vandaag_s and vandaag_s.soort != 'rust' else volgende %}
+{% if t %}
+<section class="wx-card {{ klasse(t) }}">
+  <div class="wx-card__head">
+    <p class="wx-eyebrow" style="margin:0">{{ 'Vandaag' if t.datum == vandaag else 'Volgende training' }} · {{ datumlabel(t.datum, true) }}</p>
+    {% if readiness %}<span class="wx-chip">readiness <b>{{ '%.1f'|format((readiness.benen + readiness.energie) / 2) }}</b></span>{% endif %}
+  </div>
+  <h2 class="fc-today__name">{{ t.naam }}</h2>
+  <div class="fc-meta">
+    <span class="fc-env {% if t.omgeving == 'binnen' %}fc-env--binnen{% endif %}">{{ 'Zwift · Kickr ERG' if t.omgeving == 'binnen' else 'Buiten · Wahoo' }}</span>
+    <span class="wx-chip"><b>{{ t.duur }}</b> min</span>
+    <span class="wx-chip">{{ soortnaam(t) }}</span>
+    {% if t.status == 'gedaan' and t.score %}<span class="wx-chip">score <b>{{ t.score.totaal }}</b></span>{% endif %}
+  </div>
+  {{ profiel(t) }}
+  <div class="fc-schaal"><span>0</span><span>– – 100% FTP</span><span>{{ t.duur }} min</span></div>
+  {% if t.weer or t.notities %}
+  <ul class="fc-notes">
+    {% if t.weer %}<li>{{ t.weer }}</li>{% endif %}
+    {% for n in t.notities %}<li class="{% if 'Zwift' in n or 'weer' in n %}is-weer{% endif %}">{{ n }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  <details class="wx-more">
+    <summary>Opbouw</summary>
+    <pre class="fc-opbouw">{{ t.beschrijving }}</pre>
+    <div class="wx-bar-row"><a class="wx-btn wx-btn--quiet" href="/zwo/{{ t.datum }}">Download .zwo</a></div>
+  </details>
+</section>
+{% elif vandaag_s %}
+<section class="wx-card t-frozen"><p class="wx-eyebrow">Vandaag</p><h2 class="fc-today__name">Rustdag</h2></section>
+{% endif %}
+
+{# --- Openstaande feedback, zoals JOINs 'Pending feedback' -------------- #}
+{% if open_fb %}
+<section class="wx-card t-mild">
+  <p class="wx-eyebrow">Feedback</p>
+  <h2 class="wx-heading">Hoe zwaar voelde het?</h2>
+  {% for s in open_fb %}
+  <form class="fc-fb" method="post" action="/rpe">
+    <input type="hidden" name="datum" value="{{ s.datum }}">
+    <div><span class="wx-dim wx-num">{{ datumlabel(s.datum) }}</span> · {{ s.naam }}
+      {% if s.score %}<span class="fc-score"> · score <b>{{ s.score.totaal }}</b></span>{% endif %}</div>
+    <div class="fc-rpe">
+      {% for n in range(1, 11) %}
+      {% set k = ['frozen','frozen','cold','cool','cool','mild','warm','hot','baking','baking'][n - 1] %}
+      <button class="t-{{ k }}" name="rpe" value="{{ n }}" aria-label="RPE {{ n }}">{{ n }}</button>
+      {% endfor %}
+    </div>
+    <div class="fc-rpe-legend"><span>Heel licht</span><span>Maximaal</span></div>
+  </form>
+  {% endfor %}
+  <p class="wx-note">Voelde een training zwaarder dan bedoeld, dan wordt de volgende van die soort lichter, en andersom.</p>
+</section>
+{% endif %}
+
+{# --- Deze week ------------------------------------------------------- #}
+<section class="wx-card wx-card--flat fc-plain">
+  <div class="wx-card__head"><h2 class="wx-heading" style="margin:0">Deze week</h2>
+    {% if deze_week %}<span class="wx-eyebrow" style="margin:0">{{ focusnaam.get(deze_week[0].focus, deze_week[0].fase) }}{% if deze_week[0].herstelweek %} · herstelweek{% endif %}</span>{% endif %}</div>
+  <ul class="fc-week">
+    {% for s in deze_week %}{{ dag(s, vandaag, rpe) }}{% endfor %}
+  </ul>
+</section>
+
+{# --- Beschikbaarheid aanpassen --------------------------------------- #}
+<section class="wx-card wx-card--flat t-mild">
+  <h2 class="wx-heading">Andere tijd op een dag</h2>
+  <p class="wx-note" style="margin-top:0">Kan je een dag niet, of juist langer? Het schema schuift mee. 0 minuten = geen training.</p>
+  <form method="post" action="/uitzondering" class="wx-row" style="margin-top:var(--sp-3)">
+    <div class="wx-grow"><label class="wx-label" for="u-datum">Datum</label>
+      <input class="wx-input" type="date" id="u-datum" name="datum" min="{{ min_datum }}" max="{{ max_datum }}" required></div>
+    <div style="width:6.5rem"><label class="wx-label" for="u-min">Minuten</label>
+      <input class="wx-input" type="number" id="u-min" name="minuten" min="0" max="600" step="15" value="0"></div>
+    <button class="wx-btn">Zet</button>
+  </form>
+  {% if uitzonderingen %}
+  <ul class="fc-week" style="margin-top:var(--sp-3)">
+    {% for d, m in uitzonderingen %}
+    <li class="fc-day t-mild"><span class="fc-day__when">{{ datumlabel(d) }}</span>
+      <span class="fc-day__name">{{ 'Geen tijd' if m < 30 else m ~ ' min' }}</span>
+      <form method="post" action="/uitzondering"><input type="hidden" name="datum" value="{{ d }}">
+        <button class="wx-btn wx-btn--quiet" name="weg" value="1">Weg</button></form></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+
+<form method="post" action="/bijsturen"><button class="wx-btn wx-btn--primary" style="width:100%">Bijsturen + naar intervals.icu</button></form>
+{% if status.log %}<ul class="fc-notes">{% for r in status.log %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
+{% endif %}
+{% endblock %}
