@@ -155,9 +155,15 @@ def scherm_bibliotheek(request: Request, minuten: int = 60, msg: str | None = No
     from . import bibliotheek, eigen
     ctx = _context(request, "bibliotheek", msg)
     ctx["eigen"] = eigen.alle()
+    ctx["eigen_soorten"] = eigen.SOORTEN
     minuten = max(45, min(120, minuten))
     groepen = [(soort, [t for _, _, t in rijen])
                for soort, rijen in groupby(bibliotheek.catalogus(minuten), key=lambda x: x[0])]
+    # Eigen workouts ook bij hun soort, achter de ingebouwde vormen.
+    per_soort = {}
+    for w in ctx["eigen"]:
+        per_soort.setdefault(w.soort, []).append(w.training)
+    groepen = [(s, ts + per_soort.pop(s, [])) for s, ts in groepen] + sorted(per_soort.items())
     ctx.update(groepen=groepen, minuten=minuten)
     return templates.TemplateResponse(request, "bibliotheek.html", ctx)
 
@@ -188,6 +194,31 @@ async def eigen_toevoegen(request: Request, achtergrond: BackgroundTasks):
     if mislukt:
         tekst += f" ✗ {len(mislukt)} niet: " + "; ".join(mislukt[:5]) + (" …" if len(mislukt) > 5 else "")
     return _terug("/bibliotheek", tekst)
+
+
+@app.post("/eigen/soort")
+async def eigen_soort(request: Request, achtergrond: BackgroundTasks):
+    """Soort van één eigen workout zelf kiezen, of terug naar automatisch."""
+    from . import eigen
+    f = await request.form()
+    soort = str(f.get("soort") or "auto")
+    if not eigen.zet_soort(str(f.get("id") or ""), None if soort == "auto" else soort):
+        return _terug("/bibliotheek", "Niet gevonden ✗")
+    _snel(achtergrond)
+    w = next(w for w in eigen.alle() if w.id == f.get("id"))
+    return _terug("/bibliotheek", f"{w.naam}: {w.soort}" + (" (zelf gekozen)." if w.handmatig else " (automatisch)."))
+
+
+@app.post("/eigen/automatisch")
+async def eigen_automatisch(achtergrond: BackgroundTasks):
+    """De knop: alle eigen workouts opnieuw automatisch indelen."""
+    from . import eigen
+    telling = eigen.alles_automatisch()
+    _snel(achtergrond)
+    if not telling:
+        return _terug("/bibliotheek", "Nog geen eigen workouts.")
+    deel = ", ".join(f"{n} {s}" for s, n in sorted(telling.items(), key=lambda x: -x[1]))
+    return _terug("/bibliotheek", f"Automatisch ingedeeld: {deel}.")
 
 
 @app.post("/eigen/alle-weg")

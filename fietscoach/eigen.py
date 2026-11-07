@@ -12,6 +12,7 @@ het schema als het in de beschikbare tijd van die dag past.
 from __future__ import annotations
 
 import io
+import json
 import re
 import xml.etree.ElementTree as ET
 import zipfile
@@ -25,6 +26,8 @@ MAX_BYTES = 256 * 1024            # per workout
 MAX_ZIP_BESTANDEN = 1000          # per .zip
 MAX_ZIP_TOTAAL = 64 * 1024 * 1024  # uitgepakt, per .zip (tegen zip-bommen)
 ZONES = [("vo2max", 105, 5), ("drempel", 95, 10), ("sweetspot", 88, 10), ("tempo", 76, 15)]
+SOORTEN = ("herstel", "duur", "tempo", "sweetspot", "drempel", "vo2max")  # waar je zelf uit kunt kiezen
+INDELING = "indeling.json"  # handmatige keuzes per workout
 
 # Wordt door service gezet; een functie zodat tests de datamap kunnen wisselen.
 map_bron: Callable[[], Path] | None = None
@@ -39,8 +42,10 @@ class EigenWorkout:
     id: str            # bestandsnaam zonder .zwo
     naam: str
     auteur: str
-    soort: str
+    soort: str         # waar hij in het schema meedoet
     training: Training
+    auto: str = ""     # wat de automatische indeling zegt
+    handmatig: bool = False
 
     @property
     def minuten(self) -> float:
@@ -177,25 +182,78 @@ def _map() -> Path | None:
 _cache: dict = {"sleutel": None, "lijst": []}
 
 
+def _handmatig() -> dict[str, str]:
+    m = _map()
+    p = m / INDELING if m else None
+    if not p or not p.is_file():
+        return {}
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return {}
+    return {k: v for k, v in d.items() if v in SOORTEN} if isinstance(d, dict) else {}
+
+
+def _bewaar_handmatig(d: dict[str, str]) -> None:
+    m = _map()
+    if not m:
+        return
+    m.mkdir(parents=True, exist_ok=True)
+    p = m / INDELING
+    if d:
+        p.write_text(json.dumps(d, indent=1, sort_keys=True), encoding="utf-8")
+    elif p.exists():
+        p.unlink()
+
+
 def alle() -> list[EigenWorkout]:
     m = _map()
     if not m or not m.is_dir():
         return []
     bestanden = sorted(m.glob("*.zwo"))
-    sleutel = (str(m),) + tuple((p.name, p.stat().st_mtime_ns) for p in bestanden)
+    keuzes = m / INDELING
+    sleutel = (str(m), keuzes.stat().st_mtime_ns if keuzes.exists() else 0) + tuple(
+        (p.name, p.stat().st_mtime_ns) for p in bestanden)
     if _cache["sleutel"] == sleutel:
         return _cache["lijst"]
+    handmatig = _handmatig()
     lijst = []
     for p in bestanden:
         try:
             t, meta = lees_zwo(p.read_bytes(), p.name)
         except (OngeldigBestand, OSError):
             continue
-        soort = indeling(t)
+        auto = indeling(t)
+        soort = handmatig.get(p.stem, auto)
         t.soort = soort
-        lijst.append(EigenWorkout(p.stem, meta["naam"], meta["auteur"], soort, t))
+        t.extra["eigen"] = p.stem
+        lijst.append(EigenWorkout(p.stem, meta["naam"], meta["auteur"], soort, t, auto, p.stem in handmatig))
     _cache.update(sleutel=sleutel, lijst=lijst)
     return lijst
+
+
+def zet_soort(id_: str, soort: str | None) -> bool:
+    """Handmatige soort voor één workout; None of 'auto' = terug naar automatisch."""
+    if not any(w.id == id_ for w in alle()):
+        return False
+    d = _handmatig()
+    if soort in SOORTEN:
+        d[id_] = soort
+    else:
+        d.pop(id_, None)
+    _bewaar_handmatig(d)
+    return True
+
+
+def alles_automatisch() -> dict[str, int]:
+    """De knop: alle handmatige keuzes weg, iedere workout opnieuw automatisch ingedeeld.
+    Geeft het aantal per soort terug."""
+    _bewaar_handmatig({})
+    _cache["sleutel"] = None
+    telling: dict[str, int] = {}
+    for w in alle():
+        telling[w.soort] = telling.get(w.soort, 0) + 1
+    return telling
 
 
 def voor_soort(soort: str) -> list[EigenWorkout]:
@@ -290,6 +348,7 @@ def verwijder_alle() -> int:
     for p in m.glob("*.zwo"):
         p.unlink()
         n += 1
+    _bewaar_handmatig({})
     return n
 
 
@@ -300,5 +359,8 @@ def verwijder(id_: str) -> bool:
     p = m / f"{id_}.zwo"
     if p.is_file():
         p.unlink()
+        d = _handmatig()
+        if d.pop(id_, None):
+            _bewaar_handmatig(d)
         return True
     return False

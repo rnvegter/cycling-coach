@@ -17,16 +17,31 @@
     <div class="wx-bar-row"><button class="wx-btn">Toevoegen</button>
       <span class="wx-note" style="margin:0">Zelfde bestandsnaam = bijwerken. Andere bestanden in de map worden overgeslagen.</span></div>
   </form>
-  {% if eigen %}<p class="wx-eyebrow" style="margin-top:var(--sp-4)">{{ eigen|length }} eigen workouts ·
-    {% for s, n in eigen|groupby('soort') %}{{ soortnaam({'soort': s}) }} {{ n|length }}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
+  {% if eigen %}
+  <p class="wx-eyebrow" style="margin-top:var(--sp-4)">{{ eigen|length }} eigen workouts ·
+    {% for s, n in eigen|groupby('soort') %}{{ soortnaam({'soort': s}) }} {{ n|length }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+  <form method="post" action="/eigen/automatisch" class="wx-bar-row" style="margin-top:0">
+    <button class="wx-btn">Alles automatisch indelen</button>
+    <span class="wx-note" style="margin:0">Op tijd per zone: ≥5 min boven 105% = VO2max, ≥10 min 95–105% = drempel, ≥10 min 88–95% = sweetspot, ≥15 min 76–88% = tempo, anders duur. Zet zelf gekozen soorten terug.</span>
+  </form>
+  {% endif %}
   {% for w in eigen %}
   <details class="fc-wk {{ klasse({'soort': w.soort}) }}" style="margin-top:var(--sp-3)">
     <summary><span class="fc-day__name">{{ w.naam }}</span>
-      <span class="wx-eyebrow" style="margin:0">{{ soortnaam({'soort': w.soort}) }} · {{ w.minuten|round|int }} min</span></summary>
+      <span class="wx-eyebrow" style="margin:0">{{ soortnaam({'soort': w.soort}) }}{% if w.handmatig %} ✎{% endif %} · {{ w.minuten|round|int }} min</span></summary>
     <div style="padding:0 var(--sp-4) var(--sp-4)">
       {{ profiel_t(w.training) }}
       <p class="wx-note">{{ w.training.toelichting }}</p>
       <details class="wx-more"><summary>Opbouw</summary><pre class="fc-opbouw">{{ w.training.beschrijving() }}</pre></details>
+      <form method="post" action="/eigen/soort" class="wx-row" style="margin-top:var(--sp-3)">
+        <input type="hidden" name="id" value="{{ w.id }}">
+        <div class="wx-grow"><label class="wx-label" for="soort-{{ w.id }}">Soort</label>
+          <select class="wx-input" id="soort-{{ w.id }}" name="soort" onchange="this.form.submit()">
+            <option value="auto" {% if not w.handmatig %}selected{% endif %}>Automatisch ({{ soortnaam({'soort': w.auto}) }})</option>
+            {% for s in eigen_soorten %}<option value="{{ s }}" {% if w.handmatig and w.soort == s %}selected{% endif %}>{{ soortnaam({'soort': s}) }}</option>{% endfor %}
+          </select></div>
+        <noscript><button class="wx-btn">Opslaan</button></noscript>
+      </form>
       <form method="post" action="/eigen/weg" class="wx-bar-row" onsubmit="return confirm('Deze workout verwijderen?')">
         <input type="hidden" name="id" value="{{ w.id }}"><button class="wx-btn wx-btn--quiet">Verwijderen</button></form>
     </div>
@@ -45,7 +60,7 @@
 <h2 class="wx-heading" style="margin-top:var(--sp-5)">{{ soortnaam({'soort': soort}) }} <span class="wx-dim wx-num" style="font-size:var(--step--1)">· {{ trainingen|length }}</span></h2>
 {% for t in trainingen %}
 <details class="fc-wk {{ klasse({'soort': soort}) }}">
-  <summary><span class="fc-day__name">{{ t.naam }}</span><span class="wx-eyebrow" style="margin:0">{{ t.minuten|round|int }} min</span></summary>
+  <summary><span class="fc-day__name">{{ t.naam }}</span><span class="wx-eyebrow" style="margin:0">{% if t.extra.eigen %}eigen · {% endif %}{{ t.minuten|round|int }} min</span></summary>
   <div style="padding:0 var(--sp-4) var(--sp-4)">
     {{ profiel_t(t) }}
     <p class="wx-note">{{ t.toelichting }}</p>

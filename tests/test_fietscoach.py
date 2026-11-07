@@ -1025,3 +1025,62 @@ def test_bulk_via_opdrachtregel(tmp_path, monkeypatch, capsys):
     cli.main()
     uit = capsys.readouterr().out
     assert "3 toegevoegd, 0 niet." in uit and len(eigen.alle()) == 3
+
+
+# --- indeling van eigen workouts ---------------------------------------------------
+
+def test_soort_zelf_kiezen_en_alles_automatisch():
+    eigen.importeer([("drempel.zwo", DREMPEL_ZWO), ("duur.zwo", DUUR_ZWO)])
+    assert {w.id: (w.soort, w.handmatig) for w in eigen.alle()} == {"drempel": ("drempel", False), "duur": ("duur", False)}
+    assert eigen.zet_soort("drempel", "sweetspot")
+    w = next(w for w in eigen.alle() if w.id == "drempel")
+    assert (w.soort, w.auto, w.handmatig) == ("sweetspot", "drempel", True)
+    assert [x.id for x in eigen.voor_soort("sweetspot")] == ["drempel"] and not eigen.voor_soort("drempel")
+    assert not eigen.zet_soort("bestaat-niet", "tempo")
+    eigen.zet_soort("duur", "onzin")  # onbekende soort = automatisch
+    assert next(w for w in eigen.alle() if w.id == "duur").handmatig is False
+    assert eigen.alles_automatisch() == {"drempel": 1, "duur": 1}
+    assert all(not w.handmatig and w.soort == w.auto for w in eigen.alle())
+    assert not (service.DATA / "workouts" / eigen.INDELING).exists()
+
+
+def test_handmatige_soort_telt_in_het_schema():
+    eigen.importeer([("drempel.zwo", DREMPEL_ZWO)])  # 55 min, automatisch drempel
+    eigen.zet_soort("drempel", "sweetspot")
+    cfg = _cfg(weken=8, focus="sweetspot") | {"week": {"di": {"minuten": 60}, "do": {"minuten": 60},
+                                                        "za": {"minuten": 180, "buiten": True}}}
+    plan = planner.genereer(cfg, date(2026, 11, 9))
+    assert any(s["naam"] == "Test drempel" and s["soort"] == "sweetspot" for s in plan)
+    eigen.alles_automatisch()
+    plan = planner.genereer(cfg, date(2026, 11, 9))
+    assert not any(s["naam"] == "Test drempel" for s in plan)  # drempel past niet in een sweetspotblok
+
+
+def test_verwijderen_ruimt_keuze_op():
+    eigen.importeer([("drempel.zwo", DREMPEL_ZWO)])
+    eigen.zet_soort("drempel", "tempo")
+    assert eigen.verwijder("drempel")
+    eigen.importeer([("drempel.zwo", DREMPEL_ZWO)])
+    assert next(w for w in eigen.alle() if w.id == "drempel").handmatig is False
+
+
+def test_indeling_via_scherm(monkeypatch):
+    from fastapi.testclient import TestClient
+    from fietscoach import web
+    monkeypatch.setattr(service, "laad_config", lambda *a: dict(VOORBEELD))
+    monkeypatch.setattr(service, "sync_veilig", lambda *a: "")
+    eigen.importeer([("drempel.zwo", DREMPEL_ZWO), ("vo2.zwo", VO2_ZWO)])
+    c = TestClient(web.app)
+    html = c.get("/bibliotheek").text
+    assert "Alles automatisch indelen" in html and "Automatisch (Drempel)" in html
+    # eigen workout staat ook in de sectie van zijn soort, gemarkeerd
+    drempel_sectie = html.split(">Drempel <")[1].split("wx-heading")[0]
+    assert "Test drempel" in drempel_sectie and "eigen ·" in drempel_sectie
+    r = c.post("/eigen/soort", data={"id": "drempel", "soort": "sweetspot"}, follow_redirects=False)
+    assert "zelf%20gekozen" in r.headers["location"]
+    html = c.get("/bibliotheek").text
+    assert "Test drempel" in html.split(">Sweetspot <")[1].split("wx-heading")[0] and "✎" in html
+    r = c.post("/eigen/automatisch", follow_redirects=False)
+    loc = r.headers["location"].replace("%20", " ").replace("%3A", ":").replace("%2C", ",")
+    assert "Automatisch ingedeeld: 1 drempel, 1 vo2max" in loc or "Automatisch ingedeeld: 1 vo2max, 1 drempel" in loc
+    assert all(not w.handmatig for w in eigen.alle())
