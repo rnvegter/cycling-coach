@@ -35,70 +35,96 @@ Elke ochtend om 05:30 en met de knop **Bijsturen**: ritten, wellness en weer ver
 
 ## Installatie
 
-Uitgangspunt: een **kale Debian 13-container** (LXC) die je zelf in Proxmox maakt. Het installatiescript doet de rest: pakketten, tijdzone, de code ophalen uit GitHub, Python, gebruiker, config en diensten.
+Je installeert en werkt bij met gewone git-opdrachten. Uitgangspunt: een Debian 12- of 13-container (LXC), **niet** de Proxmox-host zelf. Het script weigert daar te draaien.
 
-### 1. Container maken
+### 1. Container
 
-Met het community script, op de Proxmox-host:
+Bijvoorbeeld met het community script op de Proxmox-host:
 
 ```
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/ct/debian.sh)"
 ```
 
-Kies Debian 13, 1 core, 512 MB en **4 GB schijf** (de standaard van 2 GB is krap). Of via *Create CT* in Proxmox met het sjabloon `debian-13-standard`.
+Neem 4 GB schijf, unprivileged, met **nesting aan** (*Options → Features*), anders draait systemd niet. Ga daarna de container in (`pct enter <CTID>`); alles hieronder doe je daar als root.
 
-Belangrijk: de container moet **unprivileged** zijn met **nesting aan** (*Options → Features → nesting*), anders draait systemd niet. Het script controleert dat en zegt het als het mis is.
+### 2. Clonen
 
-### 2. Het script in de container zetten
+```
+apt update
+```
+```
+apt install -y git
+```
 
-De repo is privé, dus `curl` naar GitHub werkt niet zonder inloggen. Twee manieren:
+De repo is privé, dus git moet kunnen inloggen. Kies één manier:
 
-- **Plakken**: open `deploy/install.sh` op GitHub, klik *Raw*, kopieer alles. In de container:
+- **Deploy key** (alleen lezen, aanrader):
   ```
-  nano /root/install.sh
+  ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519
   ```
-  Plakken, opslaan (Ctrl+O, Enter, Ctrl+X).
-- **Vanaf je computer via de host**: download het bestand en zet het met `scp` op de Proxmox-host. Dan, op de host:
   ```
-  pct push <CTID> install.sh /root/install.sh
+  cat /root/.ssh/id_ed25519.pub
+  ```
+  Zet die sleutel in GitHub bij *cycling-coach → Settings → Deploy keys → Add deploy key*. Dan:
+  ```
+  git clone git@github.com:rnvegter/cycling-coach.git /opt/fietscoach
+  ```
+- **Repo openbaar maken**: er staan geen geheimen in (je sleutel en data staan buiten de repo). Dan:
+  ```
+  git clone https://github.com/rnvegter/cycling-coach.git /opt/fietscoach
   ```
 
 ### 3. Installeren
 
-In de container (`pct enter <CTID>`):
-
 ```
-bash /root/install.sh
+bash /opt/fietscoach/deploy/install.sh
 ```
 
-Het script:
-1. controleert of het Debian is, of systemd draait en of er internet is;
-2. installeert `git`, `python3-venv`, `curl` en `tzdata`, en zet de tijdzone op Europe/Amsterdam;
-3. maakt een **deploy key** en laat die zien. Zet hem in GitHub bij *cycling-coach → Settings → Deploy keys → Add deploy key* (alleen lezen) en druk op Enter;
-4. haalt de code op naar `/opt/fietscoach` en installeert de Python-pakketten;
-5. vraagt je API-sleutel van intervals.icu (leeg laten mag; later in `/etc/fietscoach/config.yaml`);
-6. start de app en de ochtendtimer en controleert of alles reageert.
+Het script installeert Python en een paar basispakketten, zet de tijdzone op Europe/Amsterdam, maakt de Python-omgeving in de clone (`.venv`), de gebruiker `fietscoach`, de config en de diensten, en controleert of de app reageert. Vul daarna je API-sleutel van intervals.icu in en herstart:
 
-Opnieuw draaien is veilig: config, data en sleutel blijven staan. Daarna open je `http://<ip-van-de-container>:8766` en klik je in **Instellingen** eerst op **Verbinding testen**.
+```
+nano /etc/fietscoach/config.yaml
+```
+```
+systemctl restart fietscoach
+```
+
+Open `http://<ip-van-de-container>:8766` en klik in **Instellingen** eerst op **Verbinding testen**.
 
 ### Wat waar staat
 
 | Wat | Waar |
 |---|---|
-| Broncode (git, alleen-lezen) | `/opt/fietscoach` |
-| Python-omgeving | `/opt/fietscoach-venv` |
+| Code (je git-clone) | `/opt/fietscoach` (of waar je hem clonet) |
+| Python-omgeving | `/opt/fietscoach/.venv` |
 | Sleutel en locatie | `/etc/fietscoach/config.yaml` |
 | Je data (plan, instellingen, RPE, readiness) | `/var/lib/fietscoach` |
-| Kopie vóór elke update | `/var/backups/fietscoach` (laatste 10) |
+| Kopie vóór elke installatie-run | `/var/backups/fietscoach` (laatste 10) |
 
-De app draait op poort 8766. Open hem en vul **Instellingen** in.
+## Bijwerken
+
+```
+cd /opt/fietscoach
+```
+```
+git pull
+```
+```
+bash deploy/install.sh
+```
+
+Het script kopieert eerst je data en config naar `/var/backups/fietscoach`, werkt de Python-pakketten en diensten bij, herstart en controleert of de app reageert. Lukt dat niet, dan noemt het de laatst werkende versie en hoe je daarheen teruggaat, bijvoorbeeld:
+
+```
+git checkout 1a2b3c4 && bash deploy/install.sh
+```
 
 ## Verbinding met intervals.icu testen
 
 In **Instellingen → Verbinding testen**, of in de container:
 
 ```
-sudo -u fietscoach FIETSCOACH_CONFIG=/etc/fietscoach/config.yaml FIETSCOACH_DATA=/var/lib/fietscoach /opt/fietscoach-venv/bin/python -m fietscoach.cli test
+sudo -u fietscoach FIETSCOACH_CONFIG=/etc/fietscoach/config.yaml FIETSCOACH_DATA=/var/lib/fietscoach /opt/fietscoach/.venv/bin/python -m fietscoach.cli test
 ```
 
 Alleen lezen. Je ziet per stap (atleet, wellness, ritten, kalender) of het lukt en welke velden binnenkomen; bij een fout de HTTP-code met uitleg (401 = sleutel klopt niet).
@@ -106,24 +132,6 @@ Alleen lezen. Je ziet per stap (atleet, wellness, ritten, kalender) of het lukt 
 ## Bewaken met Uptime Kuma
 
 `GET /health` geeft 200 als de laatste sync naar intervals.icu minder dan 36 uur oud is en foutloos ging, anders 503 met de reden. Maak in Uptime Kuma een HTTP-monitor op `http://<ip-lxc>:8766/health`.
-
-## Bijwerken
-
-Push je wijzigingen naar GitHub en draai in de container:
-
-```
-fietscoach-update
-```
-
-Of vanaf de Proxmox-host:
-
-```
-pct exec <CTID> -- fietscoach-update
-```
-
-Een nieuwe versie van `install.sh` zelf hoef je niet opnieuw te kopiëren: na de eerste installatie staat hij in `/opt/fietscoach/deploy/` en komt hij mee met elke update.
-
-Het script laat zien welke commits er nieuw zijn en kopieert eerst je data en config naar `/var/backups/fietscoach`. Daarna zet het de nieuwe code neer, werkt pakketten en systemd-units bij en herstart de app. Reageert de nieuwe versie niet binnen 20 seconden op `/ready`, dan gaat hij automatisch terug naar de vorige versie en meldt het script een fout. Je data wordt daarbij niet aangeraakt.
 
 ## Ontwikkelen
 
@@ -135,7 +143,7 @@ Het script laat zien welke commits er nieuw zijn en kopieert eerst je data en co
 ## Back-up
 
 - **Hele container** (aanrader): Proxmox *Datacenter → Backup*, dagelijks, modus *Snapshot*, naar je QNAP-share. Je Borg-back-up naar Hetzner neemt die mee.
-- **Alleen de data**: `/var/lib/fietscoach` en `/etc/fietscoach`. Elke update maakt hier al een kopie van in `/var/backups/fietscoach`.
+- **Alleen de data**: `/var/lib/fietscoach` en `/etc/fietscoach`. Elke run van `install.sh` maakt hier al een kopie van in `/var/backups/fietscoach`.
 - Terugzetten van een data-kopie:
   ```
   systemctl stop fietscoach
@@ -172,7 +180,7 @@ Ga in intervals.icu naar *Settings* → *Connections* en zet bij **Wahoo** en **
 - Logboek: `journalctl -u fietscoach -n 50` en `journalctl -u fietscoach-dagelijks -n 50`
 - Handmatig bijsturen:
   ```
-  sudo -u fietscoach FIETSCOACH_CONFIG=/etc/fietscoach/config.yaml FIETSCOACH_DATA=/var/lib/fietscoach /opt/fietscoach-venv/bin/python -m fietscoach.cli dagelijks
+  sudo -u fietscoach FIETSCOACH_CONFIG=/etc/fietscoach/config.yaml FIETSCOACH_DATA=/var/lib/fietscoach /opt/fietscoach/.venv/bin/python -m fietscoach.cli dagelijks
   ```
 - Na een FTP-test: zet je nieuwe FTP in intervals.icu. Alle doelen staan in % FTP, dus de wattages schuiven vanzelf mee.
 - Doel, focus, beschikbaarheid en voorkeuren stel je in het scherm **Instellingen** in. In `config.yaml` staan alleen je sleutel en locatie.
