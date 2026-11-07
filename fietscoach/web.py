@@ -1,6 +1,7 @@
 """Web-app: uvicorn fietscoach.web:app --host 0.0.0.0 --port 8766"""
 from __future__ import annotations
 
+import re
 from datetime import date, timedelta
 from itertools import groupby
 from pathlib import Path
@@ -44,10 +45,7 @@ def vandaag() -> date:  # los, zodat tests en schermafbeeldingen een dag kunnen 
 
 
 def _training(s: dict) -> workouts.Training | None:
-    if s["soort"] == "rust":
-        return None
-    p = max(0.0, min(1.0, s.get("p", 0) + s.get("p_mod", 0)))
-    return workouts.bouw(s["soort"], s["minuten"], p, s.get("fase", ""), s.get("variant", 0))
+    return planner.training_voor(s)  # zelfde keuze als het schema en de sync
 
 
 def profiel(s: dict, mini: bool = False) -> Markup:
@@ -84,6 +82,25 @@ def _tijd(waarde) -> str | None:
         return f"{int(h):02d}:{int(m):02d}" if 0 <= int(h) < 24 and 0 <= int(m) < 60 else None
     except ValueError:
         return None
+
+
+def ruilopties(s: dict) -> list[tuple[str, str]]:
+    """Andere trainingen voor deze dag: zelfde soort (met zwaarte), en lichter."""
+    if s["soort"] == "rust":
+        return []
+    p = max(0.0, min(1.0, s.get("p", 0) + s.get("p_mod", 0)))
+    uit = []
+    for k, t in planner.opties(s["soort"], s["minuten"], p, s.get("fase", "")):
+        z = workouts.zwaarte(t)["score"]
+        uit.append((k, f"{t.naam} · zwaarte {z}{' · eigen' if k.startswith('e:') else ''}"))
+    if s["soort"] not in ("duur", "herstel"):
+        uit.append(("s:duur", "Lichter: duurrit"))
+    if s["soort"] != "herstel":
+        uit.append(("s:herstel", "Lichter: herstelrit"))
+    return uit
+
+
+templates.env.globals["ruilopties"] = ruilopties
 
 
 def _hrv(status: dict, v: date) -> dict:
@@ -274,6 +291,27 @@ async def uitzondering(request: Request, achtergrond: BackgroundTasks):
     minuten = None if weg else int(f.get("minuten") or 0)
     service.zet_uitzondering(service.laad_config(), datum, minuten)
     return _terug("/", _snel(achtergrond) or "Aangepast.")
+
+
+@app.post("/ruil")
+async def ruil(request: Request, achtergrond: BackgroundTasks):
+    f = await request.form()
+    keuze = str(f.get("keuze") or "auto")
+    if not (keuze == "auto" or re.fullmatch(r"(v:\d+|e:[A-Za-z0-9._-]+|s:(duur|herstel))", keuze)):
+        return _terug("/", "Onbekende keuze ✗")
+    service.zet_ruil(str(f.get("datum") or ""), keuze)
+    return _terug("/", _snel(achtergrond) or "Training gewijzigd.")
+
+
+@app.post("/terug-naar-plan")
+async def terug_naar_plan(request: Request, achtergrond: BackgroundTasks):
+    f = await request.form()
+    if service.terug_naar_plan(str(f.get("datum") or "")):
+        service.pas_toe_snel()
+        achtergrond.add_task(service.sync_veilig)
+        return _terug(str(f.get("terug") or "/") if str(f.get("terug") or "/").startswith("/") else "/",
+                      "Terug naar plan; de app zet de training weer in intervals.icu.")
+    return _terug("/", "Niets terug te zetten.")
 
 
 @app.post("/bijsturen")

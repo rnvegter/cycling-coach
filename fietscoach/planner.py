@@ -68,6 +68,14 @@ def weekfasen(n: int, doel: str, focus: list[tuple[int, str]] | None = None) -> 
             meta[i]["p"] = j / (len(idx) - 1) if len(idx) > 1 else 0.5
     for m in meta:
         m.setdefault("p", 0.0)
+    # Voortgang over het hele blok (los van de fase): daarop loopt de doelzwaarte op,
+    # zodat de piek niet zwakker wordt dan het eind van de opbouw.
+    for blok in {m["blok"] for m in meta}:
+        idx = [i for i, m in enumerate(meta) if m["blok"] == blok and not m["herstel"] and m["fase"] != "taper"]
+        for j, i in enumerate(idx):
+            meta[i]["pb"] = j / (len(idx) - 1) if len(idx) > 1 else 0.5
+    for m in meta:
+        m.setdefault("pb", m["p"])
     return meta
 
 
@@ -150,15 +158,107 @@ def _kies(rol: str, m: dict, doel: str, avail: int, nq: int, vk: dict) -> tuple[
     return "duur", _duur_min(avail, f)
 
 
+# Doelzwaarte per soort aan het begin en eind van een blok (zie workouts.zwaarte).
+DOELZWAARTE = {"tempo": (3, 3), "sweetspot": (3, 4), "drempel": (4, 5), "vo2max": (4, 5)}
+
+
+def opties(soort: str, minuten: int, p: float, fase: str = "") -> list[tuple[str, "workouts.Training"]]:
+    """Alle vormen van deze soort die in de tijd passen: klassiek, bibliotheek en eigen."""
+    from . import bibliotheek, eigen
+    uit, namen = [], set()
+    for k in range(bibliotheek.aantal(soort)):
+        t = workouts.bouw(soort, minuten, p, fase, k) if k else workouts.BOUWERS[soort](minuten, p, fase)
+        if t.soort == soort and t.naam not in namen:  # een variant die niet past valt terug op duur
+            namen.add(t.naam)
+            uit.append((f"v:{k}", t))
+    for w in eigen.voor_soort(soort):
+        if 0.6 * minuten <= w.minuten <= minuten + 5:
+            uit.append((f"e:{w.id}", workouts.Training(soort, w.naam, w.training.blokken, w.training.toelichting,
+                                                       {"eigen": w.id})))
+    return uit
+
+
+def doelzwaarte(s: dict, p: float | None = None) -> int | None:
+    """Doelzwaarte voor deze week: loopt op over het blok; je RPE en readiness
+    (p_mod) trekken hem omlaag of omhoog; herstelweek hooguit 3."""
+    lo_hi = DOELZWAARTE.get(s["soort"])
+    if not lo_hi:
+        return None
+    if p is None:
+        p = max(0.0, min(1.0, s.get("pb", s.get("p", 0))))
+    # Gewoon afronden (0,5 → 1); Python's round() rondt 0,5 af naar 0 (naar even).
+    doel = lo_hi[0] + int((lo_hi[1] - lo_hi[0]) * p + 0.5)
+    # Voelde deze soort duidelijk te zwaar (RPE) of is je readiness matig: een stap
+    # terug. Duidelijk te licht: een stap verder. Ook aan het eind van een blok.
+    mod = s.get("p_mod", 0)
+    if mod <= -0.2:
+        doel = max(2, doel - 1)
+    elif mod >= 0.2:
+        doel = min(5, doel + 1)
+    if s.get("max_zwaarte"):
+        doel = min(doel, s["max_zwaarte"])
+    return min(doel, 3) if s.get("herstelweek") else doel
+
+
+def training_voor(s: dict) -> "workouts.Training | None":
+    """De training voor een dag. Eén plek, zodat scherm, .zwo en intervals.icu altijd
+    hetzelfde zien. Voor intervalsoorten: uit alle vormen die passen (ook je eigen
+    workouts) die met een zwaarte zo dicht mogelijk bij het doel voor deze week;
+    daartussen wisselt het per week. Een ruil die je zelf koos wint altijd."""
+    if s["soort"] == "rust":
+        return None
+    p = max(0.0, min(1.0, s.get("p", 0) + s.get("p_mod", 0)))
+    fase, seed = s.get("fase", ""), s.get("variant", 0)
+    doel = doelzwaarte(s)
+    if s.get("ruil") or (doel is not None and s.get("variatie", True)):
+        kandidaten = opties(s["soort"], s["minuten"], p, fase)
+        gekozen = next((t for k, t in kandidaten if k == s.get("ruil")), None)
+        if gekozen:
+            s["keuze"] = s["ruil"]
+            return gekozen
+        if doel is not None and kandidaten:
+            afstand = [(abs(workouts.zwaarte(t)["score"] - doel), k, t) for k, t in kandidaten]
+            beste = min(a for a, _, _ in afstand)
+            pool = [(k, t) for a, k, t in afstand if a == beste]
+            k, t = pool[seed % len(pool)]
+            s["keuze"] = k
+            return t
+    s["keuze"] = None
+    return workouts.bouw(s["soort"], s["minuten"], p, fase, seed)
+
+
+def voeding(minuten: float, zwaarte: int) -> str | None:
+    """Algemene richtlijn uit de sportvoeding voor koolhydraten en drinken tijdens
+    het fietsen, oplopend met de duur. Geen persoonlijk advies."""
+    if minuten < 75:
+        return None
+    if minuten < 90:
+        kh = (30, 60) if zwaarte >= 3 else None
+    elif minuten <= 150:
+        kh = (40, 60)
+    else:
+        kh = (60, 90)
+    uren = minuten / 60
+    drinken = f"{round(0.5 * uren, 1):g}–{round(0.75 * uren, 1):g} liter drinken"
+    if not kh:
+        return f"Voeding: water is genoeg; {drinken}."
+    totaal = f"{round(kh[0] * uren / 10) * 10}–{round(kh[1] * uren / 10) * 10} g"
+    tip = " Ben je dat niet gewend, bouw het op." if kh[1] >= 90 else ""
+    return (f"Voeding: {kh[0]}–{kh[1]} g koolhydraten per uur (totaal {totaal}), {drinken}; "
+            f"meer en met zout als het warm is.{tip}")
+
+
 def vul_in(s: dict) -> dict:
     if s["soort"] == "rust":
-        s.update(naam="Rust", beschrijving="Geen training.", duur=0)
+        s.update(naam="Rust", beschrijving="Geen training.", duur=0, tss=0, zwaarte=0, voeding=None)
         return s
-    p = max(0.0, min(1.0, s.get("p", 0) + s.get("p_mod", 0)))
-    t = workouts.bouw(s["soort"], s["minuten"], p, s.get("fase", ""), s.get("variant", 0))
+    t = training_voor(s)
     s["naam"] = t.naam
     s["beschrijving"] = t.beschrijving()
     s["duur"] = round(t.minuten)
+    z = workouts.zwaarte(t)
+    s["tss"], s["zwaarte"] = z["tss"], z["score"]
+    s["voeding"] = voeding(t.minuten, z["score"])
     return s
 
 
@@ -183,12 +283,15 @@ def genereer(cfg: dict, start: date) -> list[dict]:
                 # Afwisseling: elke week een andere vorm; twee intervaldagen in
                 # dezelfde week krijgen elk een andere.
                 "variant": (w + 2 * int(rol[1:]) if rol.startswith("q") else w) if vk.get("variatie", True) else 0,
-                "herstelweek": m["herstel"], "rol": rol, "p": round(m["p"], 2),
+                "herstelweek": m["herstel"], "rol": rol, "p": round(m["p"], 2), "pb": round(m["pb"], 2),
                 "basis_soort": soort, "basis_minuten": minuten,
                 "soort": soort, "minuten": minuten,
                 "buiten_toegestaan": bool(week[dag].get("buiten", False)),
                 "status": "gepland", "notities": [],
             }
+            s["variatie"] = vk.get("variatie", True)
+            if rol.startswith("q") and rol != "q0":
+                s["max_zwaarte"] = 4  # hooguit één training van zwaarte 5 per week
             if soort == "ftp_test":  # testen vergelijk je alleen in dezelfde vorm
                 s["variant"] = 1 if vk.get("ftp_test_vorm") == "20min" else 0
             s["omgeving"] = standaard_omgeving(s, vk)

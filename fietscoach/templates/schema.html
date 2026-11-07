@@ -15,7 +15,11 @@
 <details class="fc-wk {{ 't-frozen' if ss[0].herstelweek else (klasse(zwaarst[0]) if zwaarst else 't-cool') }}" {% if huidige and huidige <= wk <= huidige + 1 %}open{% endif %}>
   <summary>
     <h2 class="wx-heading">Week {{ wk }}</h2>
-    <span class="wx-eyebrow" style="margin:0">{{ focusnaam.get(ss[0].focus, ss[0].fase) }}{% if ss[0].focus == 'gemengd' %} · {{ ss[0].fase }}{% endif %}{% if ss[0].herstelweek %} · herstel{% endif %} · {{ '%.1f'|format(uren / 60) }} u</span>
+    {% set tss_plan = ss|sum(attribute='tss') if ss[0].tss is defined else 0 %}
+    {% set gereden = namespace(tss=0, dagen=0) %}
+    {% for s in ss %}{% set r = (status.ritten or {}).get(s.datum) %}{% if r %}{% set gereden.tss = gereden.tss + r.load %}{% set gereden.dagen = gereden.dagen + 1 %}{% endif %}{% endfor %}
+    <span class="wx-eyebrow" style="margin:0;text-align:right">{{ focusnaam.get(ss[0].focus, ss[0].fase) }}{% if ss[0].focus == 'gemengd' %} · {{ ss[0].fase }}{% endif %}{% if ss[0].herstelweek %} · herstel{% endif %} · {{ '%.1f'|format(uren / 60) }} u
+      <br>TSS {{ tss_plan }}{% if gereden.dagen %} · gereden {{ gereden.tss|round|int }}{% endif %}</span>
   </summary>
   <div class="fc-load"><i style="width:{{ (100 * uren / maxuren)|round }}%"></i></div>
   <ul class="fc-week">{% for s in ss %}{{ dag(s, vandaag, rpe, '/schema') }}{% endfor %}</ul>

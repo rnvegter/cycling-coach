@@ -368,7 +368,21 @@ def belasting(t: Training) -> tuple[float, float]:
 ZWAARTE_IF = (0.60, 0.72, 0.82, 0.87)  # grenzen tussen 1|2|3|4|5, afgestemd op de bibliotheek
 
 
+from functools import lru_cache  # noqa: E402
+
+
+@lru_cache(maxsize=8192)
+def _zwaarte_van(seg: tuple) -> dict:
+    t = Training("x", "x", [Blok(None, [Stap(m, (lo, hi) if lo != hi else lo) for m, lo, hi in seg])])
+    return _zwaarte(t)
+
+
 def zwaarte(t: Training) -> dict:
+    """Zwaarte 1–5 (gecachet op het profiel: dezelfde opbouw rekent maar één keer)."""
+    return dict(_zwaarte_van(tuple(segmenten(t))))
+
+
+def _zwaarte(t: Training) -> dict:
     """Zwaarte 1–5. Vooral intensiteit (IF): herstel 1, duur 2, tempo/sweetspot 3,
     drempel 4, VO2max en tests 5. Lange ritten tellen zwaarder door de belasting:
     TSS ≥ 100 minstens 3, TSS ≥ 180 minstens 4."""

@@ -80,10 +80,22 @@
   {% endif %}
   {{ profiel(t) }}
   <div class="fc-schaal"><span>0</span><span>– – 100% FTP</span><span>{{ t.duur }} min</span></div>
-  {% if t.weer or t.notities %}
+  {% if t.status == 'gepland' %}
+  <form method="post" action="/ruil" class="fc-duurkeuze">
+    <input type="hidden" name="datum" value="{{ t.datum }}">
+    <label class="wx-label" for="ruil-{{ t.datum }}">Andere training</label>
+    <select class="wx-input" id="ruil-{{ t.datum }}" name="keuze" onchange="this.form.submit()">
+      <option value="auto">Automatisch{% if not t.ruil and 'Zelf gekozen' not in (t.notities|join) %} ({{ t.naam }}){% endif %}</option>
+      {% for k, label in ruilopties(t) %}<option value="{{ k }}" {% if t.ruil == k or (k.startswith('s:') and 'Zelf gekozen' in (t.notities|join) and t.soort == k[2:]) %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+    <noscript><button class="wx-btn">Kies</button></noscript>
+  </form>
+  {% endif %}
+  {% if t.weer or t.notities or t.voeding %}
   <ul class="fc-notes">
     {% if t.weer %}<li>{{ t.weer }}</li>{% endif %}
     {% for n in t.notities %}<li class="{% if 'Zwift' in n or 'weer' in n %}is-weer{% endif %}">{{ n }}</li>{% endfor %}
+    {% if t.voeding %}<li>{{ t.voeding }}</li>{% endif %}
   </ul>
   {% endif %}
   {% if t.omgeving == 'buiten' and cfg.cwem_url %}

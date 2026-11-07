@@ -15,6 +15,9 @@
     {% elif s.score %}Duur {{ s.score.duur }}{% if s.score.intensiteit is defined %} · intensiteit {{ s.score.intensiteit }}{% endif %}{% if rpe.get(s.datum) %} · RPE {{ rpe[s.datum] }}{% endif %}
     {% else %}{{ s.duur }} min{% if s.weer %} · {{ s.weer }}{% endif %}{% endif %}
     {% if s.notities and s.status == 'gepland' %}<br>→ {{ s.notities|join(' · ') }}{% endif %}
+    {% if s.intervals_bewerkt %}<form method="post" action="/terug-naar-plan" style="display:inline">
+      <input type="hidden" name="datum" value="{{ s.datum }}"><input type="hidden" name="terug" value="{{ terug }}">
+      <button class="wx-btn wx-btn--quiet" style="min-height:32px;padding:0 var(--sp-2);margin-top:var(--sp-1)">Terug naar plan</button></form>{% endif %}
     <details><summary>Opbouw ▸</summary>
       {{ profiel(s) }}
       <pre class="fc-opbouw">{{ s.beschrijving }}</pre>

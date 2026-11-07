@@ -1120,3 +1120,211 @@ def test_zwaarte_in_bibliotheek(monkeypatch):
     assert html.count('class="fc-zwaarte z') == len(bibliotheek.catalogus(60)) + 2 + 1
     assert 'title="Zwaarte 1/5 · IF 0.52' in html  # herstel
     assert re.search(r'Zwaarte [1-5]/5 · IF \d\.\d\d · TSS \d+', html)
+
+
+# --- wijzigingen in intervals.icu respecteren ------------------------------------
+
+class Kalender(NepServer):
+    """intervals.icu met een echte kalender in het geheugen (upsert, lijst, bulk-delete)."""
+    def __init__(self):
+        super().__init__()
+        self.events, self.volgnr = {}, 100
+
+    def __call__(self, req):
+        pad = req.url.path
+        if pad.endswith("/events") and req.method == "GET":
+            return httpx.Response(200, json=list(self.events.values()))
+        if pad.endswith("/events/bulk"):
+            for e in _json.loads(req.content):
+                bestaand = self.events.get(e["external_id"])
+                self.volgnr += 1
+                self.events[e["external_id"]] = {**e, "id": bestaand["id"] if bestaand else self.volgnr}
+            return httpx.Response(200, json=[])
+        if pad.endswith("/bulk-delete"):
+            n = 0
+            for x in _json.loads(req.content):
+                n += self.events.pop(x["external_id"], None) is not None
+            return httpx.Response(200, json=n)
+        return super().__call__(req)
+
+
+def test_jouw_wijzigingen_in_intervals_blijven_staan():
+    kal = Kalender()
+    ic = _client(kal)
+    service.genereer(CFG, date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    service.sync(CFG, date(2026, 11, 9), ic)
+    di, do, za = "fietscoach-2026-11-10", "fietscoach-2026-11-12", "fietscoach-2026-11-14"
+    assert {di, do, za} <= set(kal.events)
+    origineel_do = dict(kal.events[do])
+
+    # Jij, in intervals.icu: dinsdag naar woensdag, donderdag andere naam, zaterdag weg.
+    kal.events[di]["start_date_local"] = "2026-11-11T00:00:00"
+    kal.events[do]["name"] = "Mijn eigen versie"
+    kal.events.pop(za)
+
+    melding = service.sync(CFG, date(2026, 11, 9), ic)
+    assert "3 door jou gewijzigd" in melding
+    assert kal.events[di]["start_date_local"] == "2026-11-11T00:00:00"  # niet teruggezet
+    assert kal.events[do]["name"] == "Mijn eigen versie"                 # niet overschreven
+    assert za not in kal.events                                          # niet opnieuw aangemaakt
+
+    service.bijsturen(CFG, date(2026, 11, 9), ic, weer(date(2026, 11, 9)), ververs=False)
+    plan = {s["datum"]: s for s in service.laad_plan()}
+    assert plan["2026-11-10"]["intervals_bewerkt"] == "verplaatst"
+    assert any("verplaatst naar 11-11" in n for n in plan["2026-11-10"]["notities"])
+    assert plan["2026-11-12"]["intervals_bewerkt"] == "aangepast"
+    assert plan["2026-11-14"]["intervals_bewerkt"] == "verwijderd"
+
+    # Nog een sync verandert niets aan jouw keuzes (ook niet als het plan zelf wijzigt).
+    service.sync(CFG, date(2026, 11, 9), ic)
+    assert kal.events[do]["name"] == "Mijn eigen versie" and za not in kal.events
+
+    # Terug naar plan: de volgende sync zet het plan weer neer.
+    assert service.terug_naar_plan("2026-11-12") and service.terug_naar_plan("2026-11-14")
+    assert not service.terug_naar_plan("2026-11-13")
+    service.sync(CFG, date(2026, 11, 9), ic)
+    assert kal.events[do]["name"] == origineel_do["name"] and za in kal.events
+    assert kal.events[di]["start_date_local"] == "2026-11-11T00:00:00"  # die blijft jouw keuze
+
+
+def test_terug_naar_plan_via_scherm(monkeypatch):
+    from fastapi.testclient import TestClient
+    from fietscoach import web
+    kal = Kalender()
+    monkeypatch.setattr(service, "laad_config", lambda *a: dict(CFG))
+    monkeypatch.setattr(service, "client", lambda cfg: _client(kal))
+    monkeypatch.setattr(web, "vandaag", lambda: date(2026, 11, 9))
+    service.genereer(CFG, date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    service.sync(CFG, date(2026, 11, 9))
+    kal.events["fietscoach-2026-11-10"]["name"] = "Anders"
+    service.sync(CFG, date(2026, 11, 9))
+    service.bijsturen(CFG, date(2026, 11, 9), ververs=False, weer_ophalen=False)
+    html = TestClient(web.app).get("/").text
+    assert "Terug naar plan" in html and "In intervals.icu aangepast (Anders)" in html
+    r = TestClient(web.app).post("/terug-naar-plan", data={"datum": "2026-11-10"}, follow_redirects=False)
+    assert r.status_code == 303 and "Terug%20naar%20plan" in r.headers["location"]
+    assert "fietscoach-2026-11-10" not in service.laad_status()["intervals_bewerkt"]
+
+
+# --- afwisseling op zwaarte -------------------------------------------------------
+
+def _zw(s):
+    return workouts.zwaarte(planner.training_voor(s))["score"]
+
+
+@pytest.mark.parametrize("focus", ["gemengd", "gepolariseerd", "sweetspot"])
+def test_zwaarte_loopt_op_en_max_een_vijf_per_week(focus):
+    cfg = _cfg(weken=12, focus=focus) | {"week": {"di": {"minuten": 60}, "do": {"minuten": 60},
+                                                   "za": {"minuten": 180, "buiten": True}}}
+    plan = planner.genereer(cfg, date(2026, 11, 9))
+    per_week = {}
+    for s in plan:
+        if s["soort"] in planner.DOELZWAARTE:
+            per_week.setdefault(s["week"], []).append((s, _zw(s)))
+    for wk, rij in per_week.items():
+        assert sum(z == 5 for _, z in rij) <= 1, (wk, rij)
+        for s, z in rij:
+            if s["herstelweek"]:
+                assert z <= 3
+            assert abs(z - planner.doelzwaarte(s)) <= 1, (s["naam"], z, planner.doelzwaarte(s))
+    eerste = [z for s, z in per_week[min(per_week)] if s["rol"] == "q0"]
+    laatste = [z for s, z in per_week[max(per_week)] if s["rol"] == "q0"]
+    assert laatste[0] >= eerste[0]
+
+
+def test_eigen_vijf_alleen_als_het_doel_vijf_is():
+    zwaar = _zwo("Zwaar eigen", '<Warmup Duration="600" PowerLow="0.5" PowerHigh="0.75"/>'
+                 '<IntervalsT Repeat="8" OnDuration="180" OffDuration="120" OnPower="1.15" OffPower="0.5"/>'
+                 '<Cooldown Duration="300" PowerLow="0.6" PowerHigh="0.45"/>')
+    eigen.importeer([("zwaar.zwo", zwaar)])
+    w = eigen.alle()[0]
+    assert w.soort == "vo2max" and workouts.zwaarte(w.training)["score"] == 5 and round(w.minuten) == 55
+    cfg = _cfg(weken=12, focus="gepolariseerd") | {"week": {"di": {"minuten": 60}, "za": {"minuten": 180, "buiten": True}}}
+    plan = planner.genereer(cfg, date(2026, 11, 9))
+    for s in plan:
+        if s["soort"] == "vo2max" and s.get("keuze") == "e:zwaar":
+            assert planner.doelzwaarte(s) == 5
+    assert any(s.get("keuze") == "e:zwaar" for s in plan)  # en hij komt ook echt voorbij
+
+
+def test_scherm_en_schema_kiezen_hetzelfde(monkeypatch):
+    from fietscoach import web
+    eigen.importeer([("drempel.zwo", DREMPEL_ZWO)])
+    service.genereer(_cfg(weken=12, focus="gemengd"), date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    for s in service.laad_plan():
+        t = web._training(s)
+        if t:
+            assert t.naam == s["naam"] and t.beschrijving() == s["beschrijving"], s["datum"]
+
+
+def test_zware_rpe_verlaagt_de_doelzwaarte():
+    service.genereer(_cfg(weken=12, focus="gemengd"), date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    plan = service.laad_plan()
+    s = next(x for x in plan if x["soort"] == "vo2max" and x["rol"] == "q0" and x.get("pb", 0) >= 0.6)
+    voor = planner.doelzwaarte(s)
+    s["p_mod"] = -0.4  # zoals na een paar VO2-trainingen met RPE 10
+    assert voor == 5 and planner.doelzwaarte(s) == 4
+    s["p_mod"] = -0.3  # readiness matig
+    assert planner.doelzwaarte(s) == 4
+    s["p_mod"] = 0.3   # voelde te licht; 5 is het maximum
+    assert planner.doelzwaarte(s) == 5
+
+
+def test_doelzwaarte_rondt_gewoon_af():
+    s = {"soort": "vo2max", "pb": 0.5}
+    assert planner.doelzwaarte(s) == 5  # niet 4 (Python's round(0.5) == 0)
+
+
+# --- voeding, TSS per week, ruilen ----------------------------------------------
+
+def test_voedingsadvies_alleen_bij_lange_ritten():
+    assert planner.voeding(60, 4) is None
+    assert "water is genoeg" in planner.voeding(80, 2)
+    assert "30–60 g" in planner.voeding(80, 3)
+    assert "40–60 g" in planner.voeding(120, 2) and "totaal 80–120 g" in planner.voeding(120, 2)
+    lang = planner.voeding(240, 2)
+    assert "60–90 g" in lang and "bouw het op" in lang
+
+
+def test_plan_heeft_tss_en_voeding():
+    cfg = _cfg(weken=4) | {"week": {"di": {"minuten": 60}, "za": {"minuten": 180, "buiten": True}}}
+    service.genereer(cfg, date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    plan = service.laad_plan()
+    za = next(s for s in plan if s["datum"] == "2026-11-14")
+    assert za["tss"] > 100 and "koolhydraten" in za["voeding"]
+    di = next(s for s in plan if s["datum"] == "2026-11-10")
+    assert di["voeding"] is None and di["tss"] > 0
+
+
+def test_schema_toont_tss_per_week(monkeypatch):
+    from fastapi.testclient import TestClient
+    from fietscoach import web
+    monkeypatch.setattr(web, "vandaag", lambda: date(2026, 11, 9))
+    service.genereer(_cfg(weken=4), date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    assert "TSS " in TestClient(web.app).get("/schema").text
+
+
+def test_training_ruilen(monkeypatch):
+    from fastapi.testclient import TestClient
+    from fietscoach import web
+    monkeypatch.setattr(web, "vandaag", lambda: date(2026, 11, 10))
+    monkeypatch.setattr(service, "laad_config", lambda *a: dict(CFG))
+    service.genereer(_cfg(weken=4), date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    s = next(x for x in service.laad_plan() if x["datum"] == "2026-11-10")
+    opties = web.ruilopties(s)
+    assert ("s:herstel", "Lichter: herstelrit") in opties
+    andere = next(k for k, _ in opties if k.startswith("v:") and k != s.get("keuze"))
+    service.zet_ruil("2026-11-10", andere)
+    service.bijsturen(CFG, date(2026, 11, 10), ververs=False, weer_ophalen=False)
+    na = next(x for x in service.laad_plan() if x["datum"] == "2026-11-10")
+    assert na["ruil"] == andere and "Zelf gekozen training" in na["notities"]
+    t = planner.training_voor(na)
+    assert t.naam == na["naam"] and na["keuze"] == andere
+    service.zet_ruil("2026-11-10", "s:herstel")
+    service.bijsturen(CFG, date(2026, 11, 10), ververs=False, weer_ophalen=False)
+    na = next(x for x in service.laad_plan() if x["datum"] == "2026-11-10")
+    assert na["soort"] == "herstel"
+    r = TestClient(web.app).post("/ruil", data={"datum": "2026-11-10", "keuze": "x;rm"}, follow_redirects=False)
+    assert "Onbekende" in r.headers["location"].replace("%20", " ")
+    TestClient(web.app).post("/ruil", data={"datum": "2026-11-10", "keuze": "auto"})
+    assert "2026-11-10" not in service.laad_feedback()["ruil"]

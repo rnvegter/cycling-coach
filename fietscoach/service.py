@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import fcntl
+import hashlib
 import functools
 import json
 import os
@@ -130,6 +131,7 @@ def laad_feedback() -> dict:
     fb = _lees("feedback.json", {})
     fb.setdefault("rpe", {})
     fb.setdefault("readiness", {})
+    fb.setdefault("ruil", {})
     return fb
 
 
@@ -228,6 +230,18 @@ def afleiden(basis: list[dict], cfg: dict, status: dict, fb: dict, verwachting,
     score = adapt.readiness_score(fb["readiness"].get(v), objectief)
     log += adapt.pas_readiness_toe(venster, score, vandaag)
 
+    # Zelf gekozen andere training (ruilen op de kaart van vandaag) wint.
+    for s in venster:
+        k = fb["ruil"].get(s["datum"])
+        if not k or s["soort"] == "rust":
+            continue
+        if k.startswith("s:"):
+            s["soort"] = k[2:]
+            s["notities"].append("Zelf gekozen: " + {"duur": "duurrit", "herstel": "herstelrit"}.get(k[2:], k[2:]))
+        else:
+            s["ruil"] = k
+            s["notities"].append("Zelf gekozen training")
+
     niv = adapt.niveaus(plan, fb["rpe"])
     in_venster = {id(s) for s in venster}
     for s in plan:
@@ -240,6 +254,18 @@ def afleiden(basis: list[dict], cfg: dict, status: dict, fb: dict, verwachting,
     if verwachting:
         log += adapt.pas_weer_toe([s for s in venster if s["soort"] != "rust"], verwachting, week, vk,
                                   cfg.get("weer", {}) or {})
+    bewerkt = status.get("intervals_bewerkt", {}) or {}
+    for s in plan:
+        b = bewerkt.get(PREFIX + s["datum"])
+        if b and s["status"] == "gepland":
+            s["intervals_bewerkt"] = b["wat"]
+            if b["wat"] == "verplaatst":
+                d = b.get("datum", "")
+                s["notities"].append(f"In intervals.icu verplaatst naar {d[8:10]}-{d[5:7]}; dat laten we zo")
+            elif b["wat"] == "verwijderd":
+                s["notities"].append("In intervals.icu verwijderd; dat laten we zo")
+            else:
+                s["notities"].append(f"In intervals.icu aangepast ({b.get('naam', '')}); dat laten we zo")
     for s in plan:
         if s["soort"] != "rust" and s["status"] == "gepland":
             s["omgeving"] = s.get("omgeving") or planner.standaard_omgeving(s, vk)
@@ -333,28 +359,99 @@ def bijsturen(cfg: dict, vandaag: date | None = None, ic: Intervals | None = Non
     return log
 
 
+def vingerafdruk(datum: str, naam: str, soort: str, beschrijving: str) -> dict:
+    """Wat we van een event onthouden om te zien of jij het in intervals.icu wijzigde."""
+    tekst = " ".join((beschrijving or "").split())
+    return {"datum": datum[:10], "naam": (naam or "").strip(), "type": soort or "",
+            "tekst": hashlib.sha1(tekst.encode()).hexdigest()[:12]}
+
+
+def _vingerafdruk_event(e: dict) -> dict:
+    return vingerafdruk(e.get("start_date_local") or "", e.get("name") or "", e.get("type") or "",
+                        e.get("description") or "")
+
+
 def sync(cfg: dict, vandaag: date | None = None, ic: Intervals | None = None) -> str:
+    """Komende 14 dagen naar intervals.icu. Trainingen die jij daar (of via je Wahoo
+    of Zwift) verplaatste, aanpaste of verwijderde, laten we met rust: jouw keuze
+    wint van het plan, tot je in de app op 'Terug naar plan' klikt."""
     vandaag = vandaag or date.today()
     ic = ic or client(cfg)
     if not ic:
         return "Geen intervals.icu-sleutel ingesteld."
     tot = vandaag + timedelta(days=HORIZON)
-    sessies = [s for s in laad_plan() if vandaag.isoformat() <= s["datum"] < tot.isoformat()
+    status = laad_status()
+    gepusht: dict = status.get("gepusht", {}) or {}
+    bewerkt: dict = status.get("intervals_bewerkt", {}) or {}
+    v = vandaag.isoformat()
+
+    # 1. Wat staat er nu in de kalender van ons? Ruim genomen: een verplaatste
+    #    training kan buiten de 14 dagen zijn gezet.
+    huidig = {}
+    for e in ic.events(vandaag - timedelta(days=1), tot + timedelta(days=28)):
+        ext = str(e.get("external_id") or "")
+        if ext.startswith(PREFIX):
+            huidig[ext] = e
+    for ext, vorige in gepusht.items():
+        if ext in bewerkt or ext[len(PREFIX):] < v:
+            continue
+        e = huidig.get(ext)
+        if e is None:
+            bewerkt[ext] = {"wat": "verwijderd", "sinds": datetime.now().isoformat(timespec="seconds")}
+        elif _vingerafdruk_event(e) != vorige:
+            nu = _vingerafdruk_event(e)
+            wat = "verplaatst" if nu["datum"] != vorige["datum"] else "aangepast"
+            bewerkt[ext] = {"wat": wat, "datum": nu["datum"], "naam": nu["naam"],
+                            "sinds": datetime.now().isoformat(timespec="seconds")}
+
+    # 2. Plan neerzetten, behalve wat jij hebt gewijzigd.
+    sessies = [s for s in laad_plan() if v <= s["datum"] < tot.isoformat()
                and s["status"] == "gepland" and s["soort"] != "rust"]
-    events = [naar_event(s) for s in sessies]
+    events = [naar_event(s) for s in sessies if PREFIX + s["datum"] not in bewerkt]
     if events:
         ic.upsert(events)
-    # Dagen in de horizon zonder training: ons eigen event (als dat er staat) weg.
+    for e in events:
+        gepusht[e["external_id"]] = vingerafdruk(e["start_date_local"], e["name"], e["type"], e["description"])
+
+    # 3. Dagen zonder training: ons event weg, maar niet als jij het had gewijzigd.
     gewenst = {e["external_id"] for e in events}
     weg_ids = [PREFIX + (vandaag + timedelta(days=i)).isoformat() for i in range(HORIZON)]
-    weg = ic.verwijder_extern([e for e in weg_ids if e not in gewenst])
+    weg_ids = [e for e in weg_ids if e not in gewenst and e not in bewerkt]
+    weg = ic.verwijder_extern(weg_ids)
+    for e in weg_ids:
+        gepusht.pop(e, None)
+
+    # Oude administratie opruimen.
+    grens = (vandaag - timedelta(days=2)).isoformat()
+    gepusht = {k: x for k, x in gepusht.items() if k[len(PREFIX):] >= grens}
+    bewerkt = {k: x for k, x in bewerkt.items() if k[len(PREFIX):] >= grens}
     with vergrendeld():
         status = laad_status()
+        status.update(gepusht=gepusht, intervals_bewerkt=bewerkt)
         status["gesynct"] = datetime.now().strftime("%d-%m %H:%M")
         status["gesynct_iso"] = datetime.now().isoformat(timespec="seconds")
         status.pop("sync_fout", None)
         _schrijf("status.json", status)
-    return f"{len(events)} trainingen naar intervals.icu gezet" + (f", {weg} oude verwijderd." if weg else ".")
+    tekst = f"{len(events)} trainingen naar intervals.icu gezet" + (f", {weg} oude verwijderd" if weg else "")
+    eigen_keuze = [k for k in bewerkt if k[len(PREFIX):] >= v]
+    if eigen_keuze:
+        tekst += f"; {len(eigen_keuze)} door jou gewijzigd en ongemoeid gelaten"
+    return tekst + "."
+
+
+@onder_slot
+def terug_naar_plan(datum: str) -> bool:
+    """Jouw wijziging in intervals.icu loslaten: de volgende sync zet het plan terug."""
+    status = laad_status()
+    ext = PREFIX + datum
+    bewerkt = status.get("intervals_bewerkt", {}) or {}
+    if ext not in bewerkt:
+        return False
+    bewerkt.pop(ext)
+    (status.get("gepusht") or {}).pop(ext, None)
+    status["intervals_bewerkt"] = bewerkt
+    _schrijf("status.json", status)
+    return True
 
 
 def sync_veilig(cfg: dict | None = None) -> str:
@@ -413,6 +510,20 @@ def zet_rpe(datum: str, rpe: int) -> None:
 
 
 @onder_slot
+@onder_slot
+def zet_ruil(datum: str, keuze: str | None) -> None:
+    """Andere training voor een dag: 'v:3' of 'e:id' (zelfde soort), 's:duur' of
+    's:herstel' (lichter), of None voor terug naar automatisch."""
+    fb = laad_feedback()
+    if keuze and keuze != "auto":
+        fb["ruil"][datum] = keuze
+    else:
+        fb["ruil"].pop(datum, None)
+    vandaag = date.today().isoformat()
+    fb["ruil"] = {d: k for d, k in fb["ruil"].items() if d >= vandaag}
+    bewaar_feedback(fb)
+
+
 def zet_readiness(datum: str, benen: int, energie: int) -> None:
     fb = laad_feedback()
     fb["readiness"][datum] = {"benen": max(1, min(5, int(benen))), "energie": max(1, min(5, int(energie)))}
