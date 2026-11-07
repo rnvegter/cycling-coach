@@ -40,7 +40,7 @@ net="name=eth0,bridge=$BRIDGE,ip=$IP"
 pct create "$CTID" "local:vztmpl/$SJABLOON" \
   --hostname "$HOSTNAME" --cores 1 --memory 512 --swap 256 \
   --rootfs "$STORAGE:4" --net0 "$net" \
-  --unprivileged 1 --features nesting=1 --onboot 1 \
+  --unprivileged 1 --features nesting=1 --onboot 1 --timezone Europe/Amsterdam \
   --description "Fietscoach – trainingsschema (intervals.icu → Wahoo/Zwift)"
 pct start "$CTID"
 

@@ -37,7 +37,7 @@
   <a class="wx-tab" href="/instellingen" {% if tab == 'instellingen' %}aria-current="page"{% endif %}>Instellingen</a>
 </nav>
 
-{% if msg %}<p class="wx-status {% if 'mislukt' in msg or 'Niet ' in msg or 'Kon ' in msg %}wx-status--err{% else %}t-cool{% endif %}">{{ msg }}</p>{% endif %}
+{% if msg %}<p class="wx-status {% if 'mislukt' in msg or 'Niet ' in msg or 'Kon ' in msg or '✗' in msg %}wx-status--err{% else %}t-cool{% endif %}">{{ msg }}</p>{% endif %}
 
 {% block inhoud %}{% endblock %}
 

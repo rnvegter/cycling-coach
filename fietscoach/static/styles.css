@@ -394,4 +394,8 @@ details.fc-wk > .fc-week { padding: 0 var(--sp-4) var(--sp-2); }
 .fc-slide__tijd.is-rust { color: var(--text-dim); font-weight: 400; }
 .fc-slide__buiten { min-height: var(--tap); }
 @media (max-width: 24rem) { .fc-slide__buiten { font-size: 0; gap: 0; } }  /* alleen het vinkje */
+.fc-slide__start { grid-column: 2 / -1; display: flex; align-items: center; gap: var(--sp-2);
+                   font-family: var(--data); font-size: var(--step--1); text-transform: uppercase;
+                   letter-spacing: .08em; color: var(--text-dim); padding-bottom: var(--sp-2); margin-top: calc(-1 * var(--sp-2)); }
+.fc-slide__start .wx-input { width: 7rem; min-height: 36px; }
 .fc-weektotaal { margin: var(--sp-3) 0 0; text-align: right; }

@@ -22,7 +22,7 @@ Werkt zoals JOIN, maar draait op je eigen server en ziet eruit als cwem (zelfde 
 - **Ongeplande zware rit** (clubrit, tocht: ≥ 2 uur, load ≥ 80 of RPE ≥ 8) → de dag erna wordt herstel.
 - **Gemiste intervaltraining** → naar een latere duurdag in dezelfde week.
 - **Vorm** (fitheid − vermoeidheid) onder −20 of −30 → de komende week korter.
-- **Weer** (Open-Meteo): regen, harde wind of vorst → naar Zwift; de lange rit eerst naar een droge dag.
+- **Weer per rit** (Open-Meteo, uurverwachting): alleen de uren waarin je rijdt tellen (starttijd per buitendag in Instellingen, standaard 09:30 in het weekend en 18:30 doordeweeks). Regen, harde wind of vorst in dát tijdvak → naar Zwift; de lange rit eerst naar een droge dag, beoordeeld over zijn eigen duur. Bij buitenritten een link naar cwem voor kledingadvies (`cwem_url` in `config.yaml`).
 - **Trainingsscore** na elke rit: duur en intensiteit (gepland tegenover gereden), elk 0–100.
 - **eFTP** uit intervals.icu, met een seintje als die duidelijk boven je FTP ligt.
 - **.zwo-download** per training, als reserve voor Zwift.
@@ -68,6 +68,20 @@ bash install.sh
 | Kopie vóór elke update | `/var/backups/fietscoach` (laatste 10) |
 
 De app draait op poort 8766. Open hem en vul **Instellingen** in.
+
+## Verbinding met intervals.icu testen
+
+In **Instellingen → Verbinding testen**, of in de container:
+
+```
+sudo -u fietscoach FIETSCOACH_CONFIG=/etc/fietscoach/config.yaml FIETSCOACH_DATA=/var/lib/fietscoach /opt/fietscoach-venv/bin/python -m fietscoach.cli test
+```
+
+Alleen lezen. Je ziet per stap (atleet, wellness, ritten, kalender) of het lukt en welke velden binnenkomen; bij een fout de HTTP-code met uitleg (401 = sleutel klopt niet).
+
+## Bewaken met Uptime Kuma
+
+`GET /health` geeft 200 als de laatste sync naar intervals.icu minder dan 36 uur oud is en foutloos ging, anders 503 met de reden. Maak in Uptime Kuma een HTTP-monitor op `http://<ip-lxc>:8766/health`.
 
 ## Bijwerken
 

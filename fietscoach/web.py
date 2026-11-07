@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import FastAPI, Request
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
@@ -59,6 +59,15 @@ templates.env.globals.update(
     zonelegenda=[("frozen", "Herstel"), ("cool", "Duur"), ("mild", "Tempo"), ("warm", "Sweetspot"),
                  ("hot", "Drempel"), ("baking", "VO2max")],
 )
+
+
+def _tijd(waarde) -> str | None:
+    """HH:MM uit een formulierveld, of None als het leeg of onzin is."""
+    try:
+        h, m = str(waarde or "").split(":")[:2]
+        return f"{int(h):02d}:{int(m):02d}" if 0 <= int(h) < 24 and 0 <= int(m) < 60 else None
+    except ValueError:
+        return None
 
 
 def _terug(pad: str, msg: str) -> RedirectResponse:
@@ -185,7 +194,8 @@ async def instellingen_opslaan(request: Request):
         "weken": sum(b["weken"] for b in blokken), "blokken": blokken,
         "evenement": str(f.get("evenement") or "") or None,
     }
-    cfg["week"] = {d: {"minuten": int(f.get(f"min_{d}") or 0), "buiten": f.get(f"buiten_{d}") == "1"}
+    cfg["week"] = {d: {"minuten": int(f.get(f"min_{d}") or 0), "buiten": f.get(f"buiten_{d}") == "1",
+                       "start": _tijd(f.get(f"start_{d}"))}
                    for d in planner.DAGEN}
     cfg["voorkeuren"] = {
         "max_kwaliteit_per_week": int(f.get("max_kwaliteit") or 2),
@@ -219,6 +229,24 @@ def zwo(datum: str):
     naam = f"fietscoach-{datum}.zwo"
     return Response(workouts.zwo(t), media_type="application/xml",
                     headers={"Content-Disposition": f'attachment; filename="{naam}"'})
+
+
+@app.post("/verbinding")
+def verbinding(request: Request):
+    from .intervals import verbindingstest
+    ic = service.client(service.laad_config())
+    if not ic:
+        return _terug("/instellingen", "Niet getest: geen API-sleutel in /etc/fietscoach/config.yaml.")
+    regels = verbindingstest(ic)
+    tekst = " · ".join(("✓ " if ok else "✗ ") + r for ok, r in regels)
+    return _terug("/instellingen", ("Verbinding in orde: " if all(ok for ok, _ in regels) else "Verbinding mislukt: ") + tekst)
+
+
+@app.get("/health")
+def health():
+    """Voor Uptime Kuma: 200 als de laatste sync recent en foutloos is, anders 503."""
+    ok, info = service.gezondheid()
+    return JSONResponse({"ok": ok, **info}, status_code=200 if ok else 503)
 
 
 @app.get("/api/plan")

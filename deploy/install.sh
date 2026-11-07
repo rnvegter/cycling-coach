@@ -17,6 +17,7 @@ set -euo pipefail
 REPO="${REPO:-https://github.com/rnvegter/cycling-coach.git}"
 BRANCH="${BRANCH:-main}"
 PORT="${PORT:-8766}"
+TIJDZONE="${TIJDZONE:-Europe/Amsterdam}"
 CODE=/opt/fietscoach
 VENV=/opt/fietscoach-venv
 ETC=/etc/fietscoach
@@ -32,7 +33,15 @@ interactief() { [ -t 0 ]; }
 stap "Pakketten installeren"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq git python3-venv python3-pip curl ca-certificates openssh-client >/dev/null
+apt-get install -y -qq git python3-venv python3-pip curl ca-certificates openssh-client tzdata >/dev/null
+
+# Een LXC staat vaak op UTC. Dan is "vandaag" na middernacht nog gisteren en
+# draait de ochtendtimer een uur te laat. Container en dienst op lokale tijd.
+stap "Tijdzone $TIJDZONE"
+[ -f "/usr/share/zoneinfo/$TIJDZONE" ] || fout "onbekende tijdzone $TIJDZONE"
+ln -sf "/usr/share/zoneinfo/$TIJDZONE" /etc/localtime
+echo "$TIJDZONE" > /etc/timezone
+date
 
 # --- broncode ophalen -----------------------------------------------------------
 # Publieke repo: gewoon via https. Private repo: een deploy key (alleen lezen) die

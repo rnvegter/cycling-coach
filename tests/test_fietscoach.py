@@ -83,8 +83,9 @@ class NepIntervals:
     def events(self, v, t):
         return self.bestaand
 
-    def verwijder(self, i):
-        self.deleted.append(i)
+    def verwijder_extern(self, ids):
+        self.deleted += ids
+        return len(ids)
 
 
 def weer(start, slecht=()):
@@ -112,7 +113,9 @@ def test_bijsturen_en_sync():
     assert any("Vorm" in l for l in log)
     msg = service.sync(CFG, vandaag, ic)
     assert ic.upserts and all(e["external_id"].startswith("fietscoach-") for e in ic.upserts)
-    assert ic.deleted == [1]
+    # dagen zonder training in de horizon worden opgeruimd op ons eigen id
+    assert all(d.startswith("fietscoach-") for d in ic.deleted)
+    assert not set(ic.deleted) & {e["external_id"] for e in ic.upserts}
     assert "trainingen" in msg
     # tweede keer bijsturen is stabiel
     service.bijsturen(CFG, vandaag, ic, weer(vandaag, slecht={"2026-11-14"}))
@@ -381,3 +384,209 @@ def test_duurknoppen_op_vandaag(monkeypatch):
     assert html.count('aria-pressed="true"') == 1
     r = c.post("/uitzondering", data={"datum": "2026-11-10", "minuten": "45"}, follow_redirects=False)
     assert r.status_code == 303
+
+
+# --- contract met intervals.icu (vorm volgens de openbare documentatie) -----------
+
+import base64  # noqa: E402
+import json as _json  # noqa: E402
+
+import httpx  # noqa: E402
+
+from fietscoach.intervals import Intervals, eftp_uit, verbindingstest  # noqa: E402
+
+ATLEET = {"id": "i123", "name": "Test Rijder", "sportSettings": [
+    {"types": ["Run"], "ftp": None}, {"types": ["Ride", "VirtualRide"], "ftp": 272}]}
+WELLNESS = [{"id": "2026-11-09", "ctl": 51.2, "atl": 60.8, "eftp": 284.4, "restingHR": 52}]
+RITTEN = [{"id": "i1", "start_date_local": "2026-11-08T09:12:00", "type": "Ride", "moving_time": 7236,
+           "icu_training_load": 86, "icu_intensity": 65.5914, "icu_rpe": 3},
+          {"id": "i2", "start_date_local": "2026-11-07T18:00:00", "type": "Run", "moving_time": 1800}]
+
+
+class NepServer:
+    def __init__(self, status=200):
+        self.verzoeken, self.status = [], status
+
+    def __call__(self, req: httpx.Request) -> httpx.Response:
+        self.verzoeken.append(req)
+        assert req.headers["authorization"] == "Basic " + base64.b64encode(b"API_KEY:geheim").decode()
+        if self.status != 200:
+            return httpx.Response(self.status, json={"error": "nee"})
+        pad = req.url.path
+        if pad == "/api/v1/athlete/0":
+            return httpx.Response(200, json=ATLEET)
+        if pad.endswith("/wellness"):
+            return httpx.Response(200, json=WELLNESS)
+        if pad.endswith("/activities"):
+            return httpx.Response(200, json=RITTEN)
+        if pad.endswith("/events") and req.method == "GET":
+            return httpx.Response(200, json=[{"id": 9, "external_id": "fietscoach-2026-11-10"}])
+        if pad.endswith("/events/bulk"):
+            assert req.url.params["upsert"] == "true"
+            return httpx.Response(200, json=[{"id": 1} for _ in _json.loads(req.content)])
+        if pad.endswith("/events/bulk-delete") and req.method == "PUT":
+            return httpx.Response(200, json=len(_json.loads(req.content)))
+        return httpx.Response(404)
+
+
+def _client(server):
+    return Intervals("0", "geheim", transport=httpx.MockTransport(server))
+
+
+def test_contract_bijsturen_en_sync():
+    server = NepServer()
+    ic = _client(server)
+    service.genereer(CFG, date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    service.bijsturen(CFG, date(2026, 11, 9), ic, weer(date(2026, 11, 9)))
+    st = service.laad_status()
+    assert st["ftp"] == 272 and st["eftp"] == 284 and st["ctl"] == 51 and st["vorm"] == -10
+    assert st["ritten"]["2026-11-08"]["if"] == 0.66 and "2026-11-07" not in st["ritten"]  # hardlopen telt niet
+    service.sync(CFG, date(2026, 11, 9), ic)
+    upsert = next(r for r in server.verzoeken if r.url.path.endswith("/events/bulk"))
+    events = _json.loads(upsert.content)
+    assert all(e["category"] == "WORKOUT" and e["external_id"].startswith("fietscoach-") for e in events)
+    assert {e["type"] for e in events} <= {"Ride", "VirtualRide"}
+    delete = next(r for r in server.verzoeken if r.url.path.endswith("/bulk-delete"))
+    assert all(set(x) == {"external_id"} for x in _json.loads(delete.content))
+    ok, info = service.gezondheid()
+    assert ok and info["uren_sinds_sync"] < 1
+
+
+def test_verbindingstest_goed_en_fout():
+    regels = verbindingstest(_client(NepServer()), date(2026, 11, 9))
+    assert all(ok for ok, _ in regels) and len(regels) == 4
+    assert "FTP fiets 272" in regels[0][1] and "eFTP 284" in regels[1][1]
+    assert "icu_intensity" in regels[2][1] and "1 van Fietscoach" in regels[3][1]
+    fout = verbindingstest(_client(NepServer(status=401)), date(2026, 11, 9))
+    assert fout == [(False, "Atleet: HTTP 401 sleutel klopt niet")]
+
+
+def test_eftp_oude_vorm():
+    assert eftp_uit({"sportInfo": [{"type": "Ride", "eftp": 250.4}]}) == 250
+    assert eftp_uit({}) is None
+
+
+def test_gezondheid_zonder_sync():
+    ok, info = service.gezondheid()
+    assert not ok and "nooit" in info["reden"]
+
+
+def test_health_en_verbindingsknop(monkeypatch):
+    from fastapi.testclient import TestClient
+    from fietscoach import web
+    c = TestClient(web.app)
+    r = c.get("/health")
+    assert r.status_code == 503 and r.json()["ok"] is False
+    monkeypatch.setattr(service, "laad_config", lambda *a: dict(VOORBEELD))
+    monkeypatch.setattr(service, "client", lambda cfg: _client(NepServer()))
+    r = c.post("/verbinding", follow_redirects=False)
+    assert r.status_code == 303 and "in%20orde" in r.headers["location"]
+
+
+# --- gelijktijdig schrijven -------------------------------------------------------
+
+def test_geen_verloren_invoer_bij_gelijktijdig_schrijven():
+    """Twee 'gebruikers' (timer en scherm) die tegelijk feedback opslaan."""
+    import threading
+    start = date(2026, 1, 1)
+
+    def schrijf(offset):
+        for i in range(150):
+            service.zet_rpe((start + timedelta(days=offset + 2 * i)).isoformat(), 5)
+
+    t = [threading.Thread(target=schrijf, args=(k,)) for k in (0, 1)]
+    [x.start() for x in t]
+    [x.join() for x in t]
+    assert len(service.laad_feedback()["rpe"]) == 300
+
+
+def test_geen_verloren_invoer_tussen_processen():
+    """Zoals de ochtendtimer (eigen proces) naast de webapp."""
+    import multiprocessing as mp
+    ctx = mp.get_context("fork")
+
+    def schrijf(offset, pad):
+        service.DATA = pad
+        for i in range(100):
+            service.zet_rpe((date(2026, 1, 1) + timedelta(days=offset + 2 * i)).isoformat(), 5)
+
+    p = [ctx.Process(target=schrijf, args=(k, service.DATA)) for k in (0, 1)]
+    [x.start() for x in p]
+    [x.join() for x in p]
+    assert all(x.exitcode == 0 for x in p)
+    assert len(service.laad_feedback()["rpe"]) == 200
+
+
+# --- weer per rit -----------------------------------------------------------------
+
+from fietscoach.weather import Verwachting  # noqa: E402
+
+
+def _uren(datum, regen_uren=(), vorst_uren=(), wind=20):
+    uur = {}
+    for h in range(24):
+        uur[f"{datum}T{h:02d}:00"] = {"temp": -2 if h in vorst_uren else 8, "neerslag": 3.0 if h in regen_uren else 0.0,
+                                      "kans": 90 if h in regen_uren else 10, "wind": wind}
+    return uur
+
+
+def test_venster_telt_alleen_ritduur():
+    d = "2026-11-14"
+    v = Verwachting({d: {"temp_min": -2, "temp_max": 8, "neerslag_mm": 9, "neerslagkans": 90, "wind_kmh": 20}},
+                    _uren(d, regen_uren=(21, 22, 23), vorst_uren=(4, 5, 6)))
+    w = v.venster(d, "09:30", 160)  # 09:30–12:10 raakt uur 9, 10, 11 en 12
+    assert w["neerslag_mm"] == 0 and w["temp_min"] == 8 and w["venster"] == "09:30–12:10"
+    w = v.venster(d, "20:00", 120)  # avondrit 20–22 raakt het regenuur van 21:00
+    assert w["neerslag_mm"] == 3.0 and w["neerslagkans"] == 90
+    assert v.venster("2026-12-31", "09:30", 60) is None  # buiten de verwachting
+    assert Verwachting({d: {"x": 1}}).venster(d, "09:30", 60) == {"x": 1}  # zonder uurdata: dagwaarden
+
+
+def test_avondregen_stuurt_ochtendrit_niet_naar_binnen():
+    service.genereer(CFG, date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    vandaag = date(2026, 11, 13)
+    uur = {}
+    for i in range(3):
+        d = (vandaag + timedelta(days=i)).isoformat()
+        uur |= _uren(d, regen_uren=(20, 21, 22, 23) if d == "2026-11-14" else ())
+    dag = {d[:10]: {"temp_min": 8, "temp_max": 8, "neerslag_mm": 12, "neerslagkans": 90, "wind_kmh": 20} for d in uur}
+    v = Verwachting(dag, uur)
+    service.bijsturen(CFG, vandaag, NepIntervals([], 60, 60),
+                      lambda d, m: v.venster(d, service.starttijd(CFG["week"], d), m))
+    za = next(s for s in service.laad_plan() if s["datum"] == "2026-11-14")
+    assert za["soort"] == "lange_rit" and za["omgeving"] == "buiten", za["notities"]
+    assert za["weer"].startswith("09:30–")
+    # met alleen dagwaarden (zoals vroeger) was hij naar Zwift gegaan
+    service.bijsturen(CFG, vandaag, NepIntervals([], 60, 60), dag)
+    za = next(s for s in service.laad_plan() if s["datum"] == "2026-11-14")
+    assert za["omgeving"] == "binnen"
+
+
+def test_starttijd():
+    assert service.starttijd({}, "2026-11-14") == "09:30"
+    assert service.starttijd({}, "2026-11-10") == "18:30"
+    assert service.starttijd({"za": {"start": "08:00"}}, "2026-11-14") == "08:00"
+
+
+def test_units_draaien_op_lokale_tijd():
+    for f in ("fietscoach.service", "fietscoach-dagelijks.service"):
+        assert "Environment=TZ=Europe/Amsterdam" in (ROOT / "deploy" / f).read_text()
+
+
+def test_starttijd_opslaan_en_cwem_link(monkeypatch):
+    from fastapi.testclient import TestClient
+    from fietscoach import web
+    cfg = dict(VOORBEELD, uitzonderingen={})
+    monkeypatch.setattr(service, "laad_config", lambda *a: cfg)
+    monkeypatch.setattr(service, "pas_toe", lambda *a: "ok")
+    monkeypatch.setattr(service, "bewaar_instellingen", lambda c: cfg.update(c))
+    monkeypatch.setattr(web, "vandaag", lambda: date(2026, 11, 14))
+    c = TestClient(web.app)
+    form = {"type": "ftp", "startdatum": "2026-11-09", "focus0": "zone2", "weken0": "4",
+            "min_za": "180", "buiten_za": "1", "start_za": "08:15", "min_di": "60", "start_di": "25:99"}
+    c.post("/instellingen", data=form, follow_redirects=False)
+    assert cfg["week"]["za"]["start"] == "08:15" and cfg["week"]["di"]["start"] is None
+    service.genereer(cfg, date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    html = c.get("/").text
+    assert "https://cwem.dockerapp.org/#ride" in html  # zaterdag: buiten
+    assert 'name="start_za"' in c.get("/instellingen").text

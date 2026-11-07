@@ -10,6 +10,9 @@ locatie:
   lat: 52.387
   lon: 4.646
 
+# Je cwem-app, voor een link naar kledingadvies bij buitenritten (leeg = geen link).
+cwem_url: https://cwem.dockerapp.org
+
 doel:
   type: ftp                  # ftp | duur | tocht (tocht = laatste week taper)
   startdatum: 2026-11-09     # wordt afgerond naar de maandag van die week

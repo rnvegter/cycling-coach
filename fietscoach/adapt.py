@@ -89,35 +89,52 @@ def weerredenen(w: dict, wc: dict) -> list[str]:
     return r
 
 
-def pas_weer_toe(venster: list[dict], verwachting: dict[str, dict], week: dict,
-                 vk: dict, wc: dict) -> list[str]:
+def _weerlabel(w: dict) -> str:
+    v = f"{w['venster']} · " if w.get("venster") else ""
+    return (f"{v}{w['temp_min']:.0f}–{w['temp_max']:.0f}°C, {w['neerslag_mm']:.1f} mm "
+            f"({w['neerslagkans']:.0f}%), wind {w['wind_kmh']:.0f} km/u")
+
+
+def pas_weer_toe(venster: list[dict], verwachting, week: dict, vk: dict, wc: dict) -> list[str]:
+    """verwachting: functie (datum, minuten) -> weer over dat ritvenster, of een
+    dict datum -> weer (dagwaarden; oudere vorm, gebruikt in tests)."""
+    weer_voor = verwachting if callable(verwachting) else (lambda d, m: verwachting.get(d))
     log = []
     for s in venster:
-        w = verwachting.get(s["datum"])
+        w = weer_voor(s["datum"], s["minuten"])
         if not w:
             continue
-        s["weer"] = (f"{w['temp_min']:.0f}–{w['temp_max']:.0f}°C, {w['neerslag_mm']:.1f} mm "
-                     f"({w['neerslagkans']:.0f}%), wind {w['wind_kmh']:.0f} km/u")
+        s["weer"] = _weerlabel(w)
         s["weer_slecht"] = weerredenen(w, wc)
 
-    # lange rit naar een droge dag in dezelfde week verplaatsen
+    # lange rit naar een droge dag in dezelfde week verplaatsen; die dag wordt
+    # beoordeeld over de duur van de lange rit, niet van de duurrit die er stond
     for s in venster:
         if not s["soort"].startswith("lange_rit") or not s["buiten_toegestaan"] or not s.get("weer_slecht"):
             continue
         wk = s["week"]
-        opties = [t for t in venster if t["week"] == wk and t is not s and "weer" in t
-                  and not t["weer_slecht"] and t["buiten_toegestaan"]
-                  and t["soort"] in ("duur", "herstel")
-                  and beschikbaar(week, t["dag"]) >= 0.75 * s["minuten"]]
+        opties = []
+        for t in venster:
+            if (t["week"] != wk or t is s or not t["buiten_toegestaan"]
+                    or t["soort"] not in ("duur", "herstel")
+                    or beschikbaar(week, t["dag"]) < 0.75 * s["minuten"]):
+                continue
+            w = weer_voor(t["datum"], min(beschikbaar(week, t["dag"]), s["minuten"]))
+            if w and not weerredenen(w, wc):
+                opties.append((t, w))
         if not opties:
             continue
-        t = max(opties, key=lambda x: beschikbaar(week, x["dag"]))
+        t, w = max(opties, key=lambda x: beschikbaar(week, x[0]["dag"]))
         t_min = t["minuten"]
         t["soort"], t["minuten"] = s["soort"], min(beschikbaar(week, t["dag"]), s["minuten"])
+        t["weer"], t["weer_slecht"] = _weerlabel(w), []
         t["notities"].append(f"Lange rit hierheen verplaatst (slecht weer op {s['dag']})")
         s["soort"], s["minuten"] = "duur", min(beschikbaar(week, s["dag"]), max(t_min, 45))
+        w2 = weer_voor(s["datum"], s["minuten"])
+        if w2:
+            s["weer"], s["weer_slecht"] = _weerlabel(w2), weerredenen(w2, wc)
         s["notities"].append(f"Lange rit verplaatst naar {t['dag']}")
-        log.append(f"Lange rit van {s['datum']} naar {t['datum']} vanwege het weer.")
+        log.append(f"Lange rit van {s['dag']} naar {t['dag']} vanwege het weer.")
 
     max_binnen = int(vk.get("max_binnen_minuten", 120))
     for s in venster:

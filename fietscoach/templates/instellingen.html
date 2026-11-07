@@ -1,5 +1,12 @@
 {% extends "base.html" %}
 {% block inhoud %}
+<section class="wx-card wx-card--flat t-cool">
+  <p class="wx-eyebrow">intervals.icu</p>
+  <form method="post" action="/verbinding" class="wx-bar-row" style="margin-top:0">
+    <button class="wx-btn">Verbinding testen</button>
+    <span class="wx-note" style="margin:0">Alleen lezen: atleet, wellness, ritten en kalender.</span>
+  </form>
+</section>
 {% set d = cfg.doel or {} %}
 {% set vk = cfg.voorkeuren or {} %}
 {% set w = cfg.weer or {} %}
@@ -56,11 +63,15 @@
              value="{{ m }}" style="--pct:{{ (m / 360 * 100)|round(1) }}%" aria-valuetext="{{ m }} minuten">
       <output class="fc-slide__tijd {% if m < 30 %}is-rust{% endif %}" for="min_{{ dag }}">{% if m < 30 %}rust{% else %}{{ m // 60 }}u{{ '%02d'|format(m % 60) }}{% endif %}</output>
       <label class="fc-check fc-slide__buiten"><input type="checkbox" name="buiten_{{ dag }}" value="1" {% if x.buiten %}checked{% endif %}> buiten</label>
+      {# Starttijd alleen voor buitendagen: daarop rekent het weer per rit. #}
+      <label class="fc-slide__start {% if not x.buiten %}wx-hidden{% endif %}">Start
+        <input class="wx-input" type="time" step="900" name="start_{{ dag }}"
+               value="{{ x.start or ('09:30' if dag in ('za', 'zo') else '18:30') }}"></label>
     </div>
     {% endfor %}
   </div>
   <p class="wx-eyebrow fc-weektotaal" id="weektotaal"></p>
-  <p class="wx-note">Per kwartier, tot 6 uur. Minder dan 30 minuten is een rustdag. Eén keer anders? Dat zet je op het scherm Vandaag.</p>
+  <p class="wx-note">Per kwartier, tot 6 uur. Bij buitendagen bepaalt de starttijd over welke uren het weer wordt bekeken. Minder dan 30 minuten is een rustdag. Eén keer anders? Dat zet je op het scherm Vandaag.</p>
 </section>
 
 <section class="wx-card t-frozen">
@@ -115,6 +126,8 @@
     totaal.textContent = 'Totaal ' + Math.floor(som / 60) + 'u' + String(som % 60).padStart(2, '0') + ' · ' + dagen + ' dagen';
   }
   sliders.forEach(s => s.addEventListener('input', teken));
+  document.querySelectorAll('.fc-slide__buiten input').forEach(c => c.addEventListener('change', () =>
+    c.closest('.fc-slide').querySelector('.fc-slide__start').classList.toggle('wx-hidden', !c.checked)));
   teken();
 })();
 </script>

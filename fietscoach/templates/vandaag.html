@@ -81,6 +81,9 @@
     {% for n in t.notities %}<li class="{% if 'Zwift' in n or 'weer' in n %}is-weer{% endif %}">{{ n }}</li>{% endfor %}
   </ul>
   {% endif %}
+  {% if t.omgeving == 'buiten' and cfg.cwem_url %}
+  <div class="wx-bar-row"><a class="wx-btn wx-btn--quiet" href="{{ cfg.cwem_url.rstrip('/') }}/#ride" target="_blank" rel="noopener">Kledingadvies in cwem →</a></div>
+  {% endif %}
   <details class="wx-more">
     <summary>Opbouw</summary>
     <pre class="fc-opbouw">{{ t.beschrijving }}</pre>

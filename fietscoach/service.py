@@ -9,20 +9,62 @@ Bestanden in de datamap:
 from __future__ import annotations
 
 import copy
+import fcntl
+import functools
 import json
 import os
+import threading
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import yaml
 
 from . import adapt, planner, weather
-from .intervals import PREFIX, Intervals, naar_event
+from .intervals import PREFIX, Intervals, eftp_uit, naar_event
 
 CONFIG = Path(os.environ.get("FIETSCOACH_CONFIG", "config.yaml"))
 DATA = Path(os.environ.get("FIETSCOACH_DATA", "data"))
 HORIZON = 14  # dagen vooruit: bijsturen en naar intervals.icu
 INSTELBAAR = ("doel", "week", "voorkeuren", "weer", "uitzonderingen")
+
+
+# --- vergrendeling ----------------------------------------------------------------
+# De ochtendtimer (eigen proces) en de webapp (meerdere threads) lezen en schrijven
+# dezelfde bestanden. Zonder slot overschrijft de een de ander: bewezen met
+# test_geen_verloren_invoer_bij_gelijktijdig_schrijven. Een bestandsslot regelt het
+# tussen processen; de RLock binnen het proces, en maakt het herintreedbaar
+# (pas_toe → bijsturen → _schrijf).
+
+_slot = threading.RLock()
+_diepte = threading.local()
+
+
+@contextmanager
+def vergrendeld():
+    with _slot:
+        d = getattr(_diepte, "n", 0)
+        fd = None
+        if d == 0:
+            DATA.mkdir(parents=True, exist_ok=True)
+            fd = os.open(DATA / ".slot", os.O_CREAT | os.O_RDWR, 0o600)
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        _diepte.n = d + 1
+        try:
+            yield
+        finally:
+            _diepte.n = d
+            if fd is not None:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+                os.close(fd)
+
+
+def onder_slot(f):
+    @functools.wraps(f)
+    def omhulsel(*a, **kw):
+        with vergrendeld():
+            return f(*a, **kw)
+    return omhulsel
 
 
 # --- opslag -------------------------------------------------------------------
@@ -49,6 +91,7 @@ def laad_config(pad: Path | None = None) -> dict:
     return cfg
 
 
+@onder_slot
 def bewaar_instellingen(cfg: dict) -> None:
     _schrijf("instellingen.json", {k: cfg.get(k) for k in INSTELBAAR if cfg.get(k) is not None})
 
@@ -80,8 +123,15 @@ def client(cfg: dict) -> Intervals | None:
     return Intervals(str(ic.get("athlete_id", "0")), sleutel)
 
 
+def starttijd(week: dict, datum: str) -> str:
+    """Wanneer je op die dag vertrekt; standaard 09:30 in het weekend, 18:30 doordeweeks."""
+    dag = planner.DAGEN[date.fromisoformat(datum).weekday()]
+    return (week.get(dag) or {}).get("start") or ("09:30" if dag in ("za", "zo") else "18:30")
+
+
 # --- schema maken ---------------------------------------------------------------
 
+@onder_slot
 def genereer(cfg: dict, start: date | None = None, vandaag: date | None = None) -> list[dict]:
     """Nieuw schema. Wat al voorbij is blijft staan (met je ritten en scores);
     vanaf vandaag komt het nieuwe schema ervoor in de plaats."""
@@ -125,6 +175,7 @@ def _extra_dagen(plan: list[dict], uitz: dict, vandaag: date, week: dict, vk: di
 
 # --- bijsturen ----------------------------------------------------------------
 
+@onder_slot
 def bijsturen(cfg: dict, vandaag: date | None = None, ic: Intervals | None = None,
               verwachting: dict | None = None) -> list[str]:
     vandaag = vandaag or date.today()
@@ -148,9 +199,8 @@ def bijsturen(cfg: dict, vandaag: date | None = None, ic: Intervals | None = Non
                 status.update(ctl=round(laatste["ctl"]), atl=round(laatste["atl"]))
                 vorm = laatste["ctl"] - laatste["atl"]
                 status["vorm"] = round(vorm)
-                for sp in laatste.get("sportInfo") or []:
-                    if sp.get("type") == "Ride" and sp.get("eftp"):
-                        status["eftp"] = round(sp["eftp"])
+                if eftp_uit(laatste):
+                    status["eftp"] = eftp_uit(laatste)
             status["ftp"] = ic.ftp()
         except Exception as e:  # noqa: BLE001
             log.append(f"intervals.icu niet bereikbaar: {e}")
@@ -197,7 +247,8 @@ def bijsturen(cfg: dict, vandaag: date | None = None, ic: Intervals | None = Non
     if verwachting is None:
         try:
             loc = cfg["locatie"]
-            verwachting = weather.verwachting(loc["lat"], loc["lon"])
+            v = weather.verwachting(loc["lat"], loc["lon"])
+            verwachting = lambda d, m: v.venster(d, starttijd(week, d), m)  # noqa: E731
         except Exception as e:  # noqa: BLE001
             log.append(f"Weerbericht niet beschikbaar: {e}")
             verwachting = {}
@@ -208,6 +259,7 @@ def bijsturen(cfg: dict, vandaag: date | None = None, ic: Intervals | None = Non
         if s["datum"] >= vandaag.isoformat() and s["status"] == "gepland":
             planner.vul_in(s)
     status["bijgestuurd"] = datetime.now().strftime("%d-%m %H:%M")
+    status["bijgestuurd_iso"] = datetime.now().isoformat(timespec="seconds")
     status["log"] = log
     _schrijf("plan.json", plan)
     _schrijf("status.json", status)
@@ -226,16 +278,16 @@ def sync(cfg: dict, vandaag: date | None = None, ic: Intervals | None = None) ->
     events = [naar_event(s) for s in sessies]
     if events:
         ic.upsert(events)
+    # Dagen in de horizon zonder training: ons eigen event (als dat er staat) weg.
     gewenst = {e["external_id"] for e in events}
-    weg = 0
-    for e in ic.events(vandaag, tot):
-        ext = e.get("external_id") or ""
-        if ext.startswith(PREFIX) and ext not in gewenst:
-            ic.verwijder(e["id"])
-            weg += 1
-    status = laad_status()
-    status["gesynct"] = datetime.now().strftime("%d-%m %H:%M")
-    _schrijf("status.json", status)
+    weg_ids = [PREFIX + (vandaag + timedelta(days=i)).isoformat() for i in range(HORIZON)]
+    weg = ic.verwijder_extern([e for e in weg_ids if e not in gewenst])
+    with vergrendeld():
+        status = laad_status()
+        status["gesynct"] = datetime.now().strftime("%d-%m %H:%M")
+        status["gesynct_iso"] = datetime.now().isoformat(timespec="seconds")
+        status.pop("sync_fout", None)
+        _schrijf("status.json", status)
     return f"{len(events)} trainingen naar intervals.icu gezet" + (f", {weg} oude verwijderd." if weg else ".")
 
 
@@ -248,23 +300,46 @@ def pas_toe(cfg: dict | None = None) -> str:
             log.append(sync(cfg))
         except Exception as e:  # noqa: BLE001
             log.append(f"Synchroniseren mislukt: {e}")
+            with vergrendeld():
+                st = laad_status()
+                st["sync_fout"] = f"{datetime.now().isoformat(timespec='seconds')} {e}"
+                _schrijf("status.json", st)
     return " ".join(log)
+
+
+def gezondheid(nu: datetime | None = None, max_uren: int = 36) -> tuple[bool, dict]:
+    """Voor Uptime Kuma: gezond als de laatste sync recent is en er geen fout openstaat."""
+    nu = nu or datetime.now()
+    st = laad_status()
+    info = {k: st.get(k) for k in ("gesynct_iso", "bijgestuurd_iso", "sync_fout")}
+    if not st.get("gesynct_iso"):
+        return False, info | {"reden": "nog nooit gesynchroniseerd"}
+    leeftijd = (nu - datetime.fromisoformat(st["gesynct_iso"])).total_seconds() / 3600
+    info["uren_sinds_sync"] = round(leeftijd, 1)
+    if st.get("sync_fout"):
+        return False, info | {"reden": "laatste sync mislukt"}
+    if leeftijd > max_uren:
+        return False, info | {"reden": f"langer dan {max_uren} uur geen sync"}
+    return True, info
 
 
 # --- invoer vanuit het scherm ---------------------------------------------------
 
+@onder_slot
 def zet_rpe(datum: str, rpe: int) -> None:
     fb = laad_feedback()
     fb["rpe"][datum] = max(1, min(10, int(rpe)))
     bewaar_feedback(fb)
 
 
+@onder_slot
 def zet_readiness(datum: str, benen: int, energie: int) -> None:
     fb = laad_feedback()
     fb["readiness"][datum] = {"benen": max(1, min(5, int(benen))), "energie": max(1, min(5, int(energie)))}
     bewaar_feedback(fb)
 
 
+@onder_slot
 def zet_uitzondering(cfg: dict, datum: str, minuten: int | None) -> dict:
     cfg = copy.deepcopy(cfg)
     uitz = cfg.setdefault("uitzonderingen", {}) or {}
