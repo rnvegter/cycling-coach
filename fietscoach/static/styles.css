@@ -317,7 +317,15 @@ pre.fc-opbouw { white-space: pre-wrap; font-family: var(--data); font-size: var(
 .fc-day__name { font-weight: 500; min-width: 0; }
 .fc-day__sub { grid-column: 2 / -1; font-size: var(--step--1); color: var(--text-dim); }
 .fc-day.is-today { background: var(--surface-2); }
-.fc-day.is-gedaan .fc-day__name::before { content: "✓ "; color: var(--temp-ink); }
+/* Afgerond: groen vinkje in een rondje. Groen staat los van de zonekleuren,
+   zodat het niet als trainingszone gelezen wordt. Contrast ≥ 4,5:1 op beide
+   ondergronden, licht en donker. */
+:root, [data-theme="dark"] { --ok: #5BBF77; }
+@media (prefers-color-scheme: light) { :root:not([data-theme]) { --ok: #23703B; } }
+.fc-klaar { display: inline-flex; align-items: center; justify-content: center; width: 1.15em; height: 1.15em;
+  margin-right: .4em; vertical-align: -0.15em; border-radius: 50%; background: var(--ok); }
+.fc-klaar svg { width: .8em; height: .8em; fill: none; stroke: var(--surface); stroke-width: 2.4;
+  stroke-linecap: round; stroke-linejoin: round; }
 .fc-day.is-gemist .fc-day__name, .fc-day.is-vervallen .fc-day__name, .fc-day.is-afwezig .fc-day__name { color: var(--text-dim); text-decoration: line-through; }
 .fc-day.is-rust { box-shadow: none; }
 .fc-day details > summary { cursor: pointer; color: var(--text-dim); font-size: var(--step--1); list-style: none; }

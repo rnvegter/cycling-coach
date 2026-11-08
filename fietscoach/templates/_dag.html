@@ -14,7 +14,7 @@
 {% macro dag(s, vandaag, rpe, terug='/') %}
 <li class="fc-day {{ klasse(s) }} is-{{ s.status }} {% if s.soort == 'rust' %}is-rust{% endif %} {% if s.datum == vandaag %}is-today{% endif %}">
   <span class="fc-day__when">{{ datumlabel(s.datum) }}</span>
-  <span class="fc-day__name">{{ s.naam }}</span>
+  <span class="fc-day__name">{% if s.status == 'gedaan' %}<span class="fc-klaar" role="img" aria-label="Afgerond" title="Afgerond volgens intervals.icu"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span>{% endif %}{{ s.naam }}</span>
   <span>
     {% if s.score %}<span class="fc-score">score <b>{{ s.score.totaal }}</b></span>
     {% elif s.soort != 'rust' %}<span class="fc-env {% if s.omgeving == 'binnen' %}fc-env--binnen{% endif %}">{{ 'Zwift' if s.omgeving == 'binnen' else 'Buiten' }}</span>{% endif %}

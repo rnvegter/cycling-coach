@@ -301,3 +301,19 @@ def test_voeding_binnen_en_cwem_link_voor_buiten(monkeypatch):
     assert "Kleding, eten en drinken: https://cwem.example/?" in tekst and "Voeding: x" not in tekst
     _, tekst = inzicht.ochtendtekst(plan, {}, {"rpe": {}}, date(2026, 11, 14))
     assert "Voeding: x" in tekst
+
+
+def test_groen_vinkje_bij_afgeronde_rit(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from fietscoach import web
+    monkeypatch.setattr(web, "vandaag", lambda: date(2026, 11, 13))
+    service.genereer(CFG, date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    # dinsdag gereden (gekoppeld in intervals.icu), donderdag niet
+    service._schrijf("status.json", {"ritten": {"2026-11-10": {"minuten": 60, "load": 55, "if": 0.8,
+                                                               "rpe": None, "naam": "Zwift", "gepaard": True}}})
+    service.bijsturen(CFG, date(2026, 11, 13), ververs=False, weer_ophalen=False)
+    html = TestClient(web.app).get("/schema").text
+    assert html.count('aria-label="Afgerond"') == 1
+    i = html.index('aria-label="Afgerond"')
+    assert "di 10-11" in html[i - 400:i].lower()
