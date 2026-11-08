@@ -124,7 +124,7 @@ def weektekst(w: dict, focusnaam: dict) -> tuple[str, str]:
               f"Tijd: {_uren(w['minuten_gereden'])} gereden, {_uren(w['minuten_gepland'])} gepland.",
               f"Belasting (TSS): {w['tss_gereden']} gereden, {w['tss_gepland']} gepland."]
     if w["gemist"]:
-        regels.append("Gemist: " + ", ".join(w["gemist"]) + ".")
+        regels.append("Overgeslagen: " + ", ".join(w["gemist"]) + ".")
     if w["rpe"] is not None:
         regels.append(f"Gemiddelde RPE: {w['rpe']}.")
     if w["fit_verschil"] is not None:

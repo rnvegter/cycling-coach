@@ -314,6 +314,8 @@ def test_groen_vinkje_bij_afgeronde_rit(monkeypatch):
                                                                "rpe": None, "naam": "Zwift", "gepaard": True}}})
     service.bijsturen(CFG, date(2026, 11, 13), ververs=False, weer_ophalen=False)
     html = TestClient(web.app).get("/schema").text
-    assert html.count('aria-label="Afgerond"') == 1
-    i = html.index('aria-label="Afgerond"')
-    assert "di 10-11" in html[i - 400:i].lower()
+    assert html.count("fc-klaar") == 1 and html.count(">Afgerond</b>") == 1
+    i = html.index(">Afgerond</b>")
+    assert "di 10-11" in html[i - 900:i].lower()
+    # woensdag en donderdag zijn voorbij en niet gereden
+    assert html.count(">Overgeslagen</b>") == 2 and "Gemist" not in html

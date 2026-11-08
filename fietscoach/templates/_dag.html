@@ -14,17 +14,17 @@
 {% macro dag(s, vandaag, rpe, terug='/') %}
 <li class="fc-day {{ klasse(s) }} is-{{ s.status }} {% if s.soort == 'rust' %}is-rust{% endif %} {% if s.datum == vandaag %}is-today{% endif %}">
   <span class="fc-day__when">{{ datumlabel(s.datum) }}</span>
-  <span class="fc-day__name">{% if s.status == 'gedaan' %}<span class="fc-klaar" role="img" aria-label="Afgerond" title="Afgerond volgens intervals.icu"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span>{% endif %}{{ s.naam }}</span>
+  <span class="fc-day__name">{% if s.status == 'gedaan' %}<span class="fc-klaar" aria-hidden="true" title="Afgerond volgens intervals.icu"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span>{% endif %}{{ s.naam }}</span>
   <span>
     {% if s.score %}<span class="fc-score">score <b>{{ s.score.totaal }}</b></span>
     {% elif s.soort != 'rust' %}<span class="fc-env {% if s.omgeving == 'binnen' %}fc-env--binnen{% endif %}">{{ 'Zwift' if s.omgeving == 'binnen' else 'Buiten' }}</span>{% endif %}
   </span>
   {% if s.soort != 'rust' %}
   <div class="fc-day__sub">
-    {% if s.status == 'gemist' %}Gemist{% if s.verschoven %} · doorgeschoven{% endif %}
-    {% elif s.status == 'vervallen' %}Vervallen
-    {% elif s.status == 'afwezig' %}Afwezig
-    {% elif s.score %}Duur {{ s.score.duur }}{% if s.score.intensiteit is defined %} · intensiteit {{ s.score.intensiteit }}{% endif %}{% if rpe.get(s.datum) %} · RPE {{ rpe[s.datum] }}{% endif %}
+    {% if s.status == 'gemist' %}<b class="fc-status">Overgeslagen</b>{% if s.verschoven %} · doorgeschoven{% endif %}
+    {% elif s.status == 'vervallen' %}<b class="fc-status">Vervallen</b>
+    {% elif s.status == 'afwezig' %}<b class="fc-status">Afwezig</b>
+    {% elif s.status == 'gedaan' %}<b class="fc-status fc-status--ok">Afgerond</b>{% if s.score %} · duur {{ s.score.duur }}{% if s.score.intensiteit is defined %} · intensiteit {{ s.score.intensiteit }}{% endif %}{% endif %}{% if rpe.get(s.datum) %} · RPE {{ rpe[s.datum] }}{% endif %}
     {% else %}{{ s.duur }} min{% if s.weer %} · {{ s.weer }}{% endif %}{% endif %}
     {% if s.notities and s.status == 'gepland' %}<br>→ {{ s.notities|join(' · ') }}{% endif %}
     {% if s.handmatig and s.status == 'gepland' %}<form method="post" action="/extra" style="display:inline">

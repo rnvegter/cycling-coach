@@ -152,7 +152,7 @@
     <div class="fc-tile"><b>{{ w.rpe if w.rpe is not none else '–' }}</b><span>RPE</span></div>
     <div class="fc-tile"><b>{{ '%+d'|format(w.fit_verschil) if w.fit_verschil is not none else '–' }}</b><span>Fitheid</span></div>
   </div>
-  {% if w.gemist %}<p class="wx-note">Gemist: {{ w.gemist|join(', ') }}.</p>{% endif %}
+  {% if w.gemist %}<p class="wx-note">Overgeslagen: {{ w.gemist|join(', ') }}.</p>{% endif %}
   {% if w.volgende %}<p class="wx-note" style="margin-bottom:0">Deze week: {{ 'herstelweek' if w.volgende.herstel else focusnaam.get(w.volgende.focus, w.volgende.fase)|lower }}, {{ w.volgende.trainingen }} trainingen, {{ (w.volgende.minuten / 60)|round(1) }} uur. Zwaarste: {{ w.volgende.zwaarste }} ({{ datumlabel(w.volgende.zwaarste_dag) }}).</p>{% endif %}
 </section>
 {% endif %}
