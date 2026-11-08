@@ -59,7 +59,7 @@
     {% if readiness %}<span class="wx-chip">readiness <b>{{ '%.1f'|format((readiness.benen + readiness.energie) / 2) }}</b></span>
     {% elif hrv.score %}<span class="wx-chip" title="{{ hrv.uitleg }}">HRV <b>{{ '%.1f'|format(hrv.score) }}</b></span>{% endif %}
   </div>
-  <h2 class="fc-today__name">{% if t.status == 'gedaan' %}<span class="fc-klaar" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></svg></span>{% endif %}{{ t.naam }}</h2>
+  <h2 class="fc-today__name">{% if t.status == 'gedaan' %}<span class="fc-klaar" aria-hidden="true"><svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span>{% endif %}{{ t.naam }}</h2>
   {% if t.status == 'gedaan' %}<p class="wx-note" style="margin-top:0"><b class="fc-status fc-status--ok">Afgerond</b>{% if t.score %} · score {{ t.score.totaal }} · duur {{ t.score.duur }}{% if t.score.intensiteit is defined %} · intensiteit {{ t.score.intensiteit }}{% endif %}{% endif %}{% if not rpe.get(t.datum) %} · vergeet je RPE niet{% endif %}</p>{% endif %}
   <div class="fc-meta">
     <span class="fc-env {% if t.omgeving == 'binnen' %}fc-env--binnen{% endif %}">{{ 'Zwift · Kickr ERG' if t.omgeving == 'binnen' else 'Buiten · Wahoo' }}</span>

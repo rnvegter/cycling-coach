@@ -331,3 +331,22 @@ def test_vandaag_toont_afgerond_na_rit(monkeypatch):
     html = TestClient(web.app).get("/").text
     assert ">Afgerond</b> · score" in html and "vergeet je RPE niet" in html
     assert "Duur aanpassen" not in html.split("Deze week")[0]
+
+
+def test_opmaak_heeft_versie_en_vinkje_vaste_maat(monkeypatch):
+    """Bug: na een update had de app (service worker) de nieuwe pagina maar de oude
+    stylesheet, en het vinkje werd schermbreed."""
+    import re
+
+    from fastapi.testclient import TestClient
+
+    from fietscoach import web
+    monkeypatch.setattr(web, "vandaag", lambda: date(2026, 11, 10))
+    service.genereer(CFG, date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    service.bijsturen(CFG, date(2026, 11, 10), NepIntervals(["2026-11-10"]), weer(date(2026, 11, 10)))
+    c = TestClient(web.app)
+    html = c.get("/").text
+    v = re.search(r'/static/styles\.css\?v=([0-9a-f]{10})"', html)
+    assert v and c.get(f"/static/styles.css?v={v.group(1)}").status_code == 200
+    for svg in re.findall(r'<span class="fc-klaar"[^>]*><svg[^>]*>', html + c.get("/schema").text):
+        assert 'width="12"' in svg and 'height="12"' in svg

@@ -114,6 +114,20 @@ def cwem(s: dict, cfg: dict) -> str | None:
 templates.env.globals["cwem"] = cwem
 
 
+def _versie() -> str:
+    """Vingerafdruk van de opmaak. In het adres van de stylesheet, zodat browser en
+    service worker na een update de nieuwe ophalen in plaats van een oude uit de cache
+    (een nieuwe pagina met oude opmaak gaf een vinkje van schermbreed)."""
+    import hashlib
+    h = hashlib.sha256()
+    for p in ("styles.css", "fonts/fonts.css"):
+        h.update((HIER / "static" / p).read_bytes())
+    return h.hexdigest()[:10]
+
+
+templates.env.globals["versie"] = _versie()
+
+
 def _hrv(status: dict, v: date) -> dict:
     from .adapt import objectieve_readiness
     score, uitleg = objectieve_readiness(status.get("wellness") or [], v)

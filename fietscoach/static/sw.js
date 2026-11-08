@@ -2,8 +2,8 @@
    Pagina's: eerst het netwerk, zonder verbinding de laatst geladen versie.
    Opmaak, letters en iconen: direct uit de cache, op de achtergrond ververst.
    Formulieren (POST) gaan altijd gewoon naar de server. */
-const VERSIE = 'fietscoach-1';
-const BASIS = ['/static/styles.css', '/static/fonts/fonts.css', '/static/icoon-192.png'];
+const VERSIE = 'fietscoach-2';  // ophogen ruimt oude caches op
+const BASIS = ['/static/icoon-192.png'];  // opmaak staat met ?v= in de pagina en komt bij eerste gebruik
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSIE).then(c => c.addAll(BASIS)).then(() => self.skipWaiting()));
