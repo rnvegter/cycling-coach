@@ -194,3 +194,47 @@ def test_afleiden_is_herhaalbaar_en_raakt_basis_niet():
     assert _json.dumps(service.laad_plan(), sort_keys=True) == een
     assert _json.dumps(service.laad_basis(), sort_keys=True) == basis_voor
 
+
+
+# --- rit van vandaag ---------------------------------------------------------------
+
+def test_rit_van_vandaag_telt_meteen_na_bijsturen():
+    """Bug: Bijsturen haalde ritten op tot en met gisteren (intervals.icu geeft
+    activiteiten tot de dag vóór 'newest'), en markeerde alleen dagen vóór vandaag.
+    Een rit van vandaag bleef dus tot morgen 'gepland'."""
+    kal = Kalender()
+
+    class MetRitVandaag(type(kal)):
+        def __call__(self, req):
+            if req.url.path.endswith("/activities"):
+                self.newest = req.url.params["newest"]
+                # zoals intervals.icu: tot de dag vóór newest
+                ritten = [{"id": "i9", "start_date_local": "2026-11-10T18:40:00", "type": "VirtualRide",
+                           "moving_time": 3600, "icu_training_load": 58, "icu_intensity": 84,
+                           "paired_event_id": 101}]
+                return httpx.Response(200, json=[r for r in ritten if r["start_date_local"][:10] < self.newest])
+            return super().__call__(req)
+
+    server = MetRitVandaag()
+    ic = _client(server)
+    service.genereer(CFG, date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    service.sync(CFG, date(2026, 11, 10), ic)
+    assert "fietscoach-2026-11-10" in server.events
+    service.bijsturen(CFG, date(2026, 11, 10), ic, weer(date(2026, 11, 10)))
+    di = next(s for s in service.laad_plan() if s["datum"] == "2026-11-10")
+    assert server.newest == "2026-11-11"
+    assert di["status"] == "gedaan" and di["score"]
+    # De sync laat de training van vandaag staan: intervals.icu heeft je rit eraan gekoppeld.
+    service.sync(CFG, date(2026, 11, 10), ic)
+    assert "fietscoach-2026-11-10" in server.events
+
+
+def test_vandaag_zonder_rit_blijft_gepland():
+    service.genereer(CFG, date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    service.bijsturen(CFG, date(2026, 11, 10), NepIntervals([]), weer(date(2026, 11, 10)))
+    di = next(s for s in service.laad_plan() if s["datum"] == "2026-11-10")
+    assert di["status"] == "gepland"
+    # gereden: meteen afgerond
+    service.bijsturen(CFG, date(2026, 11, 10), NepIntervals(["2026-11-10"]), weer(date(2026, 11, 10)))
+    di = next(s for s in service.laad_plan() if s["datum"] == "2026-11-10")
+    assert di["status"] == "gedaan"

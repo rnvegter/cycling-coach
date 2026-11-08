@@ -39,6 +39,11 @@ def is_gedaan(s: dict, rit: dict | None) -> bool:
 def markeer(plan: list[dict], ritten: dict[str, dict], vandaag: date, afwezig, vanaf: str = "") -> None:
     v = vandaag.isoformat()
     for s in plan:
+        if s["datum"] == v:
+            # Vandaag: al gereden = afgerond; nog niet (of te kort) = je kunt nog gaan.
+            if s["soort"] != "rust" and not afwezig(v) and is_gedaan(s, ritten.get(v)):
+                s["status"] = "gedaan"
+            continue
         if not (vanaf <= s["datum"] < v):
             continue
         rit = ritten.get(s["datum"])

@@ -319,3 +319,15 @@ def test_groen_vinkje_bij_afgeronde_rit(monkeypatch):
     assert "di 10-11" in html[i - 900:i].lower()
     # woensdag en donderdag zijn voorbij en niet gereden
     assert html.count(">Overgeslagen</b>") == 2 and "Gemist" not in html
+
+
+def test_vandaag_toont_afgerond_na_rit(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from fietscoach import web
+    monkeypatch.setattr(web, "vandaag", lambda: date(2026, 11, 10))
+    service.genereer(CFG, date(2026, 11, 9), vandaag=date(2026, 11, 8))
+    service.bijsturen(CFG, date(2026, 11, 10), NepIntervals(["2026-11-10"]), weer(date(2026, 11, 10)))
+    html = TestClient(web.app).get("/").text
+    assert ">Afgerond</b> · score" in html and "vergeet je RPE niet" in html
+    assert "Duur aanpassen" not in html.split("Deze week")[0]

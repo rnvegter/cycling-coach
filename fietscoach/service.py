@@ -497,7 +497,9 @@ def bijsturen(cfg: dict, vandaag: date | None = None, ic: Intervals | None = Non
         ic = ic or client(cfg)
         if ic:
             try:
-                acts = ic.activiteiten(vandaag - timedelta(days=28), vandaag)
+                # 'newest' is bij intervals.icu exclusief (tot de dag ervóór), dus +1 dag:
+                # anders komt de rit van vandaag pas morgen binnen.
+                acts = ic.activiteiten(vandaag - timedelta(days=28), vandaag + timedelta(days=1))
                 status["ritten"] = adapt.ritten_per_dag(acts)
                 well = ic.wellness(vandaag - timedelta(days=FITHEID_DAGEN), vandaag)
                 grens = (vandaag - timedelta(days=28)).isoformat()
@@ -597,7 +599,9 @@ def sync(cfg: dict, vandaag: date | None = None, ic: Intervals | None = None) ->
     # 3. Dagen zonder training: ons event weg, maar niet als jij het had gewijzigd.
     gewenst = {e["external_id"] for e in events}
     weg_ids = [PREFIX + (vandaag + timedelta(days=i)).isoformat() for i in range(HORIZON)]
-    weg_ids = [e for e in weg_ids if e not in gewenst and e not in bewerkt]
+    # Een vandaag al gereden training blijft staan: intervals.icu heeft je rit eraan gekoppeld.
+    afgerond = {PREFIX + s["datum"] for s in laad_plan() if s["status"] == "gedaan"}
+    weg_ids = [e for e in weg_ids if e not in gewenst and e not in bewerkt and e not in afgerond]
     weg = ic.verwijder_extern(weg_ids)
     for e in weg_ids:
         gepusht.pop(e, None)
