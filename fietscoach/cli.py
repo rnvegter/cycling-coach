@@ -1,4 +1,4 @@
-"""Opdrachtregel: python -m fietscoach.cli [genereer|bijsturen|sync|dagelijks|toon|test|rooktest|importeer|ochtendbericht|weekterugblik]"""
+"""Opdrachtregel: python -m fietscoach.cli <opdracht>; zie --help voor de lijst."""
 from __future__ import annotations
 
 import argparse
@@ -40,7 +40,7 @@ def importeer(paden: list[str]) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(prog="fietscoach")
     ap.add_argument("opdracht", choices=["genereer", "bijsturen", "sync", "dagelijks", "toon", "test",
-                                         "rooktest", "importeer", "ochtendbericht", "weekterugblik"])
+                                         "rooktest", "importeer", "ochtendbericht", "weekterugblik", "ophalen"])
     ap.add_argument("--opname", help="bij rooktest: map waarin de antwoorden (zonder persoonsgegevens) komen")
     ap.add_argument("--start", help="startdatum JJJJ-MM-DD (bij genereer)")
     ap.add_argument("paden", nargs="*", help="bij importeer: .zwo-bestanden, .zip-bestanden of mappen")
@@ -58,6 +58,10 @@ def main() -> None:
                 print(service.ochtendbericht(cfg))
             except Exception as e:  # noqa: BLE001  een bericht mag de ochtendronde niet breken
                 print(f"Ochtendbericht mislukt: {e}")
+    elif a.opdracht == "ophalen":
+        # Elk uur overdag: ritten, wellness en weer vers, bijsturen en syncen, zodat een
+        # rit binnen een uur als afgerond staat. Geen bericht: dat is voor de ochtend.
+        print(service.pas_toe(cfg) or "Opgehaald, niets te melden.")
     elif a.opdracht == "ochtendbericht":
         print(service.ochtendbericht(cfg, altijd=True))
     elif a.opdracht == "weekterugblik":

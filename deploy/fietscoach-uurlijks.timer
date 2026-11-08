@@ -1,0 +1,11 @@
+[Unit]
+Description=Fietscoach elk uur overdag ophalen, zodat gereden ritten snel als afgerond staan
+
+[Timer]
+# 08:00 tot en met 23:00; de ochtendronde om 07:00 doet de rest (en het bericht).
+OnCalendar=*-*-* 08..23:00
+RandomizedDelaySec=120
+Persistent=false
+
+[Install]
+WantedBy=timers.target

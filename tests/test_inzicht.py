@@ -226,3 +226,14 @@ def test_pwa():
     assert sw.status_code == 200 and "javascript" in sw.headers["content-type"] and "skipWaiting" in sw.text
     html = c.get("/").text
     assert 'rel="manifest"' in html and "serviceWorker" in html and 'crossorigin="use-credentials"' in html
+
+
+def test_ophalen_elk_uur_zonder_bericht(monkeypatch, capsys):
+    from fietscoach import cli
+    aangeroepen = []
+    monkeypatch.setattr(service, "laad_config", lambda *a: dict(CFG))
+    monkeypatch.setattr(service, "pas_toe", lambda cfg: aangeroepen.append("pas_toe") or "")
+    monkeypatch.setattr(service, "ochtendbericht", lambda *a, **k: aangeroepen.append("bericht"))
+    monkeypatch.setattr("sys.argv", ["fietscoach", "ophalen"])
+    cli.main()
+    assert aangeroepen == ["pas_toe"] and "Opgehaald" in capsys.readouterr().out

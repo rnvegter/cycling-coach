@@ -121,10 +121,11 @@ for unit in "$CODE"/deploy/fietscoach*.service "$CODE"/deploy/fietscoach*.timer;
 done
 rm -f /usr/local/bin/fietscoach-update  # van een oudere versie
 systemctl daemon-reload
-systemctl enable -q fietscoach.service fietscoach-dagelijks.timer fietscoach-week.timer
+systemctl enable -q fietscoach.service fietscoach-dagelijks.timer fietscoach-week.timer fietscoach-uurlijks.timer
 systemctl restart fietscoach.service
 systemctl restart fietscoach-dagelijks.timer
 systemctl restart fietscoach-week.timer
+systemctl restart fietscoach-uurlijks.timer
 
 stap "Controle"
 for _ in $(seq 1 20); do
